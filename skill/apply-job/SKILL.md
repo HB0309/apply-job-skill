@@ -271,8 +271,7 @@ Depot), Taleo, Talemetry and SuccessFactors.
    currently-work-here flag, reason for leaving where asked, and the **full description text**
    pasted from the pack. Same for both Education entries. Use "Add another" until the count
    matches the pack; delete every parser-invented extra, duplicate or merged block.
-2. **Order = the PDF = most recent END date first, current role at the top** (today: Community
-   Dreams, <Employer B>, <filler entry>, <Employer D>). Start date does not decide order. If the widget
+2. **Order = the PDF = most recent END date first, current role at the top** (the current role first, then the role that ended most recently, and so on). Start date does not decide order. If the widget
    sorts by creation order or start date and offers no reorder control, clear the section and
    re-enter in PDF order so the recruiter sees the same sequence as the résumé.
 3. **Page check before Next, then verify after the page commits.** Before clicking Next/Save on
