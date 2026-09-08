@@ -1,0 +1,118 @@
+% content-pool.tex — the READ-ONLY superset of everything that may appear on a résumé.
+%
+% This file does NOT need to fit on one page. It holds every experience entry, every project,
+% every alternate framing and every verified metric. The skill scores each entry against a
+% posting, selects what fits one page, and compiles a per-application copy. It never edits
+% this file.
+%
+% Conventions the skill depends on:
+%   % RELEVANCE: ...            one line above each entry — what kinds of postings it fits
+%   % --- ALTERNATE ... ---      an alternate bullet block for the same facts, with its trigger
+%   %===== fenced blocks         NOT ON THE RESUME / VERIFIED PROJECT METRICS (see bottom);
+%                                `jobkit pool tex` strips them, `jobkit pool notes` returns them
+%   \textbf{...} around numbers  bolded metrics must survive tailoring
+%   exactly one entry may be marked FILLER (allowed to run with a single bullet)
+
+\documentclass{resume}
+\usepackage[left=0.6in,top=0.5in,right=0.6in,bottom=0.5in]{geometry}
+\usepackage{fontspec}
+\setmainfont{Calibri}   % any system font Tectonic can find; Calibri needs the atsfix step
+
+\name{<Full Name>}
+\address{<phone> \\ \href{mailto:<email>}{<email>} \\ \href{<linkedin-url>}{linkedin.com/in/...} \\ \href{<github-url>}{github.com/...}}
+
+\begin{document}
+\fontsize{10.5}{12}\selectfont
+
+\begin{rSection}{Professional Summary}
+% Keep this free of numbers here; the tailoring pass weaves in ONE metric that is on the page.
+<One to two lines: who you are, what you build, the one thing that differentiates you.>
+\end{rSection}
+
+\begin{rSection}{Education}
+\textbf{<University A>} \hfill <City, State> \\
+<Degree>, <Field> \hfill <Mon YYYY> -- <Mon YYYY> \\
+GPA: \textbf{<x.xx>/4.0} \quad Relevant Courses: <course, course, course>   % page-fit lever
+\vspace{2pt}
+\textbf{<University B>} \hfill <City, Country> \\
+<Degree>, <Field> \hfill <Mon YYYY> -- <Mon YYYY>
+\end{rSection}
+
+\begin{rSection}{Experience}
+
+% RELEVANCE: <what this entry is good for: leadership, backend, security, ...>. Fits: <roles>.
+\textbf{<Title — frozen fact, never tailored>} \hfill <Mon YYYY> -- Present \\
+\textit{<Employer A>} \hfill <City, State>
+\begin{itemize}\itemsep -2pt
+  \item <Accomplished X, as measured by \textbf{Y}, by doing Z.>
+  \item <Second bullet — every entry has at least two, at most three.>
+  \item <Third bullet.>
+\end{itemize}
+% --- ALTERNATE framing (swap in for postings that explicitly name <trigger>) ---
+%   \item <Same facts, different emphasis.>
+% --- end alternate ---
+
+% RELEVANCE: ...
+\textbf{<Title>} \hfill <Mon YYYY> -- <Mon YYYY> \\
+\textit{<Employer B>} \hfill <City, State>
+\begin{itemize}\itemsep -2pt
+  \item ...
+  \item ...
+\end{itemize}
+
+% RELEVANCE: ... FILLER — the one entry allowed to run with a single dense bullet as the last page-fill lever.
+\textbf{<Title>} \hfill <Mon YYYY> -- <Mon YYYY> \\
+\textit{<Employer C>} \hfill <City, State>
+\begin{itemize}\itemsep -2pt
+  \item ...
+  \item ...
+\end{itemize}
+
+\end{rSection}
+
+\begin{rSection}{Projects}
+\begin{itemize}\itemsep -2pt
+
+% RELEVANCE: ... Goes FIRST for postings naming <X>.
+\item \textbf{<Project A>} \textit{(<tech, tech, tech>)} \hfill \href{<public repo url>}{\textit{github.com/...}}
+\begin{itemize}\itemsep -2pt
+  \item ...
+  \item ...
+\end{itemize}
+
+% RELEVANCE: ...
+\item \textbf{<Project B>} \textit{(<tech>)}
+\begin{itemize}\itemsep -2pt
+  \item ...
+  \item ...
+\end{itemize}
+
+\end{itemize}
+\end{rSection}
+
+\begin{rSection}{Technical Skills}
+\begin{tabular}{@{} l l @{}}
+Languages: & <...> \\        % rows may be reordered by relevance; contents never invented
+Frameworks: & <...> \\
+Security: & <...> \\
+Cloud/Infra: & <...> \\
+\end{tabular}
+\end{rSection}
+
+\end{document}
+
+%=====================================================================
+% NOT ON THE RESUME, DELIBERATELY
+%=====================================================================
+% Claims that were audited and retracted, so a future tailoring pass can never
+% reintroduce them. One line each: the claim, why it is out.
+%   - <claim> — <reason>
+
+%=====================================================================
+% VERIFIED PROJECT METRICS
+%=====================================================================
+% Every number that may appear on the page, with where it was verified.
+% --- <Project A> ---
+%   <metric>: <value> — verified <how/where>
+% --- <Employer A> ---
+%   <metric>: <value> — verified <how/where>

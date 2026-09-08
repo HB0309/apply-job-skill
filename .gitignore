@@ -1,0 +1,19 @@
+# per-user data never belongs in this repo
+workspace/master/profile.md
+workspace/master/content-pool.tex
+workspace/qa-bank.md
+workspace/applications/*
+!workspace/applications/.gitkeep
+workspace/job-matcher-feed/*
+!workspace/job-matcher-feed/.gitkeep
+workspace/interview-prep/*
+!workspace/interview-prep/.gitkeep
+workspace/tracker.backup-*.md
+workspace/bin/gmail/credentials.json
+workspace/bin/gmail/token.json*
+workspace/bin/tectonic.exe
+workspace/bin/tectonic
+skill/apply-job/form-data.md
+__pycache__/
+*.pyc
+.temp/
