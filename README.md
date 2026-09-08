@@ -47,7 +47,14 @@ Claude adapts the slashes.
    Put `tectonic` (or `tectonic.exe`) in `~/job-applications/bin/`.
 3. **Point the skill at the workspace.** In `~/.claude/skills/apply-job/SKILL.md` and
    `references/inbox.md`, replace every `<WORKSPACE>` with your workspace path.
-4. **Fill in your data** (this is the part that takes an hour, and it is the whole point):
+4. **Run the setup interview** — in Claude Code, from the workspace folder:
+   ```
+   /apply-job setup
+   ```
+   It takes your existing résumé (PDF, Word, LaTeX or plain text) and a conversation, asks
+   "where does that number come from?" for every metric, and writes the four data files below.
+   Numbers you cannot source are left out and recorded so they never creep back in.
+   Full walkthrough: [`docs/SETUP.md`](docs/SETUP.md). Or fill the templates by hand:
    - `master/profile.template.md` → `master/profile.md`: identity, work authorization, visa
      answer, salary range, notice period, EEO answers.
    - `master/content-pool.template.tex` → `master/content-pool.tex`: every job, project and
@@ -79,6 +86,7 @@ Google expires the refresh token every 7 days.
 | `/apply-job inbox` | reads Gmail for rejections / OAs / interviews, updates the tracker, writes interview-prep notes, prints a morning brief |
 | `/apply-job insights` | reply rates by role type and by source (Handshake / Jobright / LinkedIn / …) |
 | `/apply-job sweep [N]` | pulls the N freshest candidates from `job-matcher-feed/` and runs them through the normal flow |
+| `/apply-job setup` | first-run interview: builds `profile.md`, `content-pool.tex`, `form-data.md`, `qa-bank.md` from your existing résumé + answers |
 | `/apply-job scan` | reads your logged-in Handshake / Jobright / LinkedIn "recommended" pages and queues fits for `sweep` |
 
 Plain-language updates work too: "Acme rejected me", "got an OA from Beta" update the tracker.
@@ -97,6 +105,11 @@ Education: 2 of 2 entered, verified after save
 Unanswered: none
 ```
 You review the form, click Submit, and say "submitted". The tracker row flips to `applied`.
+
+## Docs
+- [`docs/SETUP.md`](docs/SETUP.md) — first-run walkthrough: setup interview, first three runs with `--review`, what a run prints, the daily loop.
+- [`docs/INTERVIEW-PREP.md`](docs/INTERVIEW-PREP.md) — what the inbox mode writes when an OA or interview arrives, and how to ask for prep.
+- `workspace/qa-bank.template.md` — the story-bank format the screener answers draw from.
 
 ## How it is built (and why it is cheap to run)
 
@@ -157,6 +170,7 @@ skill/apply-job/          → copy to ~/.claude/skills/apply-job
   references/inbox.md      Gmail sweep
   references/insights.md   conversion analysis
   references/ats-quirks.md cross-platform failure modes
+  references/setup.md      the first-run interview
   ats/*.md                 one playbook per ATS
   resume-style.md          voice and structural rules
   form-data.template.md    → form-data.md (your form-only facts)
@@ -166,6 +180,8 @@ workspace/                → copy anywhere, point SKILL.md at it
   bin/gmail/               Gmail API reader
   master/                  profile.template.md, content-pool.template.tex, resume.cls
   tracker.md               empty tracker with the header
+  qa-bank.template.md      story-bank format
+docs/                     SETUP.md, INTERVIEW-PREP.md
   applications/            one folder per application (created by the skill)
 ```
 

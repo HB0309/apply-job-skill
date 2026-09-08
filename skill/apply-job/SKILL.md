@@ -35,7 +35,7 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
   form-pack says Workday, load `workday.md`.
 - **References (load on demand, never all):**
   `references\tailoring.md` (steps 1–8, prep subagent) · `references\inbox.md` ·
-  `references\insights.md` · `references\ats-quirks.md` (when a form misbehaves)
+  `references\insights.md` · `references\ats-quirks.md` (when a form misbehaves) · `references\setup.md` (first run)
 - Interview prep: `interview-prep\<company-slug>\` — one folder per company.
 - Gmail reader: `bin\gmail\gmail_search.py`
 
@@ -46,6 +46,7 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 - `/apply-job inbox` — morning Gmail sweep (`references\inbox.md`)
 - `/apply-job insights` — conversion analysis (`references\insights.md`)
 - `/apply-job sweep [N]` — process job-matcher's pre-scored candidates (below). `N` optional, default 5.
+- `/apply-job setup` — first-run interview that builds profile.md, content-pool.tex, form-data.md and qa-bank.md (`references\setup.md`)
 - `/apply-job scan` — browse Handshake/Jobright/LinkedIn via the user's live Chrome session and queue matches (below). Meant to be run on a loop (`/loop 8h /apply-job scan`), not manually every time.
 
 ## Hard rules (apply to every mode)
@@ -399,6 +400,22 @@ to read those pages and queue anything that's a plausible fit, same downstream q
 
 **This mode never applies to anything itself** — it only queues. Processing still happens via
 `/apply-job sweep`, with the same hard filter, tailoring, and factual audit as any other link.
+
+---
+## Setup flow: `/apply-job setup`
+
+First-run onboarding. Builds the four data files the pipeline depends on from whatever the
+user already has (a PDF or Word résumé, a LinkedIn export, or just a conversation). Full
+procedure in `references\setup.md`. It is an **interview**, not a conversion: every metric,
+title, date and tool goes in only after the user confirms where it comes from. A number the
+user cannot source is left out, and recorded under "NOT ON THE RESUME, DELIBERATELY" so it is
+never reintroduced.
+
+Outputs, in order: `master\profile.md` → `master\content-pool.tex` (compiled once as a sanity
+check, one page is NOT required) → `form-data.md` → `qa-bank.md` (at least one story per
+entry, tagged by angle). Ends with `jobkit pool tex`, `jobkit pool notes`, `jobkit qa list` and
+`jobkit track audit` all running clean, and tells the user to run their first three real
+applications with `--review`.
 
 ---
 
