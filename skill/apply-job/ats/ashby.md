@@ -24,6 +24,16 @@ Everything else is a per-posting UUID: map it by its `title` from the schema.
 - `Boolean` fields render as Yes/No radios.
 - File inputs need a `read_page` ref for `file_upload`.
 - Closed postings return `posting not found` from the schema call — fall back to the DOM path.
+- **The EEO / self-ID survey never appears in `jobkit schema`.** It is served in the rendered page
+  as three radio groups (`survey:<id>:_systemfield_eeoc_gender` / `_race` / `_veteran_status`),
+  usually with no disability question. Expect it on every US posting even when the form-pack says
+  "no EEO block"; fill it from the locked answers with real clicks.
+- **The résumé upload re-parses and overwrites already-filled fields** (name, email, LinkedIn,
+  GitHub, sometimes long-text). Upload first, then fill, then read every field back.
+- **Some boards are embed-only.** `jobs.ashbyhq.com/<org>` can 404 in a real browser while the
+  posting API and `jobkit schema` both work (Cursor). The form is then embedded on the company's
+  own careers page (`cursor.com/careers/<slug>`), often rendered twice (a hidden mobile copy and
+  the live one) — target the form whose `offsetParent` is non-null.
 
 ## Known question → answer mappings
 | Question contains | Answer |

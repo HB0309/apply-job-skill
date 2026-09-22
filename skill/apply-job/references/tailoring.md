@@ -1,150 +1,227 @@
 # Tailoring — steps 1–8 of `/apply-job`
 
-Loaded by the **prep subagent**, which runs this whole file for one posting and never
-touches the browser except to fetch a JS-rendered posting. It never clicks Submit.
+Loaded by the **prep subagent**, which runs this whole file for one posting. It never touches
+the browser except to fetch a JS-rendered posting, and it never clicks Submit.
 
-Read `resume-style.md` before any tailoring. Get the content pool with
-`python bin/jobkit.py pool tex` (comment-stripped) — never read `content-pool.tex` directly.
+**Style guide: `<skill folder>\resume-style.md`** (the skill root; this
+file is in `references\`). Never read anything under `skill-backups\`.
 
-### 1. Fetch & extract the posting
-Try WebFetch first. If blocked, empty, or JS-rendered (LinkedIn, Workday, Greenhouse embeds): invoke the claude-in-chrome skill, then use the Chrome tools (`tabs_context_mcp` first, create a new tab, `get_page_text`) — the user's logins carry over.
-Create folder `applications\<YYYY-MM-DD>_<company-slug>_<role-slug>\` and save `job-posting.md`. Its **first line** is the posting date handed to you by the orchestrator's date gate — `**Posted:** <YYYY-MM-DD> (<N> days ago)`, or `**Posted:** unknown`. Do not run the date check yourself and do not substitute a date you scraped off the page; the gate's value is the one the tracker records. **Immediately after extracting company and role, re-run the duplicate check with them:**
-`python bin/jobkit.py dup "<url>" --company "<C>" --role "<R>"`. `MATCH` or `FUZZY MATCH` → stop,
-return `VERDICT: Duplicate` with the prior row, log nothing else (the orchestrator logs
-`duplicate`). The URL-only check at step 0 cannot see the same job posted on another board.
-Then the body: company, role title, location, posted/reposted date if visible on the page, hard requirements vs preferred, responsibilities, exact keyword list, any screener questions visible, red-flag observations (reposted >60 days, "fast-paced" = understaffed patterns, junior title with senior requirements, vague responsibilities).
+**Load order is where the tokens go.** Do NOT read the style guide or the pool up front. Step 3-0
+decides: a REUSE needs neither, a track base needs the style guide and single pool entries, only
+a from-scratch tailor needs `jobkit pool tex`.
+
+### 1. The posting
+**Normal case: the prompt says `job-posting.md: written by jobkit meta`.** The folder and
+`job-posting.md` exist, body verbatim from the ATS API, the gate's date on line 1. Read it. Do
+not fetch, rewrite, or re-run the duplicate check. Note the hard requirements, screener
+questions and red flags (reposted >60 days, "fast-paced" understaffing patterns, junior title
+with senior requirements) for the match report.
+
+**`NO_META` case only.** Fetch order: WebFetch → `firecrawl_scrape` → your OWN Chrome tab
+(`tabs_create_mcp`, `navigate`, `get_page_text`, `tabs_close_mcp`; never touch a tab you did not
+create). LinkedIn cannot be fetched by Firecrawl. Create
+`applications\<YYYY-MM-DD>_<company-slug>_<role-slug>\` (date FIRST, underscores; the older
+`<company>-<role>-<date>` folders are legacy) and save `job-posting.md`: line 1
+`**Posted:** <the date the prompt gave you>` (never a date scraped off the page), then
+`- **Company:**`, `- **Role:**`, `- **Location:**`, `- **Pay range published:**` bullets, a
+`---` line, then the body. Then run
+`python bin/jobkit.py dup "<url>" --company "<C>" --role "<R>"` (`MATCH` / `FUZZY MATCH` → stop,
+return `VERDICT: Duplicate` with the prior row) and `python bin/jobkit.py triage <folder>`
+(`SKIP` → return `VERDICT: Skip` with its reason).
 
 ### 2. Hard filter — allowed to say no
+`jobkit triage` has already removed the clear-cut cases. What is left for you is the judgement
+that needs the pool. The prompt's `Triage:`
+line carries any flagged lines: weigh them. `--force` means the user overrode a skip: tailor it, do
+not re-argue.
 
-**Auto-skip (standing rule):** verdict Skip immediately when the stated salary band tops out below <salary floor> AND the employer is government/public-agency/defense (cannot sponsor a work visa). Both conditions required; either alone is not a skip.
-Compare hard requirements against master + profile. Verdict **Skip** when: a hard requirement is genuinely unmet (e.g. "3+ years professional Java" vs coursework), visa/work-auth mismatch, or wrong seniority tier. Be blunt: "Skip — they want 3 years of Java, you have coursework."
-**Do not skip on years-of-experience alone when the posting reads "Bachelor's + N years"** — an M.S. counts as equivalent experience toward that bar (standing rule); only skip if the *type* of experience is genuinely missing, not just the year count.
-On Skip: report the reasons; the orchestrator logs the row with `track add --status skipped --notes "<reason>"`. STOP. The user can override by re-running with `--force` — respect the override without re-arguing.
+Verdict **Skip** when a hard requirement is genuinely unmet ("3+ years professional Java" vs
+coursework), on a visa / work-auth mismatch, or the wrong seniority tier. Be blunt.
+- **Years of experience.** Their M.S. covers a requirement of **up to 2 years** ("2+ years",
+  "1-3 years", "Bachelor's + 2" are never a skip on the count). **A first stated requirement of
+  3+ years IS a skip.** A range counts by its lower bound ("2-6 years" is 2). A `YOE` flag
+  reaching you means the line was softened, on a Master's path, or not the first requirement:
+  read it and apply the same rule.
+- Also a Skip: the employer saying it will not sponsor now or in the future, "OPT, CPT or EAD not
+  accepted", a graduation-cohort program they are outside of, a non-US location, an ITAR /
+  US-person requirement, a required stack with zero pool evidence. A residency requirement is a
+  Skip only when the posting rules out relocating. "Must be authorized to work in the US" is NOT
+  a skip.
+- On Skip: report the reasons and STOP; the orchestrator logs the row. the user overrides with
+  `/apply-job <link> --force`.
 
 ### 3. Tailor the resume
 
-**3-0. Variant cache — check before tailoring anything.**
-`python bin/jobkit.py similar <folder>/job-posting.md --company "<C>" --role "<R>"`
+**3-0. Variant cache.** `python bin/jobkit.py similar <folder>/job-posting.md --company "<C>" --role "<R>"`
 prints `REUSE` or `REBUILD (<reasons>)`. On **REUSE**: copy the named prior folder's
-`Resume.tex` and `.pdf` into this folder, skip steps 3–5 entirely, and state in
-the match report which application was reused and its cosine score. On **REBUILD**, or if
-`--fresh` was passed, tailor normally. Phase 1 thresholds: cosine >= 0.45 AND same company.
+`Resume.tex` and `.pdf` here, skip steps 3–5, and state in the match report which
+application was reused and its cosine score. Still run 5a (`atsfix`) and 8b (`formpack`).
+Thresholds: cosine >= 0.45 AND same company.
 
-Read `resume-style.md` (this folder) and `master\profile.md`. Get the content pool with
-`python bin/jobkit.py pool tex` — comment-stripped, 34% smaller, still valid LaTeX.
-**Never read `master\content-pool.tex` directly.**
-Copy `master\resume.cls` into the application folder unchanged (required to compile), then
-**Write** `<application-folder>\Resume.tex` directly from the pool text you
-already have in context — never `cp` the pool and Read it back to Edit it, which pays for the
-same ~8k tokens twice.
+**3-0b. Track base — the default path on REBUILD.**
+Run `python bin/jobkit.py skills <application-folder>` first. Its `TRACK` line reads
+`TRACK security=<n> software=<n> ai=<n> -> base: <track> [HYBRID: <a>+<b>]`. **Use the base it
+names; never pick by feel.** (The title decides first, security > AI > software, a title word
+is worth 6 hits; otherwise the highest count with 2+ hits wins and ties go to `software`;
+boilerplate-only hits are ignored.) **On `HYBRID`, read `references\hybrid-swaps.md` and make the
+swaps it lists: they are mandatory.** State the base, the HYBRID tag and each swap in the match
+report's Selection section.
 
-**3a. Score and select Experience and Projects.** The content pool holds more than fits one page — everything in it competes fresh on every run, nothing gets an inertia advantage for already being in the pool's default position.
-1. List every Experience entry and every Project in the pool, using the `% RELEVANCE:` comment above each as a starting signal.
-2. Score each 0-3 against the posting's stated requirements/keywords (0 = irrelevant, 1 = tangential, 2 = related, 3 = directly matches a named requirement).
-3. Rank within each section. Select top-scoring entries down to what the page needs, respecting floors: **Experience never drops below 3 entries; Projects never drops below 2; and the total selected across both sections is never below 6** (added 2026-08-06 — a bare 3+2 floor was observed leaving a visibly unfilled page twice on 2026-08-06). Concretely: default to **4 Experience + 2 Projects or 3 Experience + 3 Projects**, whichever combination scores higher in aggregate, before falling further to 3+2 only if a 6th entry would genuinely score 0 with nothing defensible to say.
-4. For Experience entries kept, if a `% --- ... framing (swap in for ...) ---` alternate bullet block exists for that entry and better matches the posting's track, use it in place of the default bullet(s) it's paired with — same underlying facts, different emphasis.
-5. Experience order is fixed reverse-chronological regardless of score (resume-style.md 2026-07-26.B) — scoring decides what's *included*, never the order. Projects MAY be reordered by score.
-6. Record the kept/dropped decision and a 1-line reason for each pool item — this feeds the match report's Selection section (step 6).
+Then `python bin/jobkit.py base use <track> <application-folder>`:
+- `BASE <track> -> …`: an already-audited one-page résumé for that track is now in the folder
+  as `Resume.tex`, with `resume.cls`. **Read it once, then change it with `Edit`
+  calls; never rewrite the file whole.** Read the style guide first. Expected edits: the
+  Professional Summary (3c.2, 3c.3), the skills-table rebuild and keyword-coverage pass (3b,
+  mandatory here too), the routed bullets (3e), project order (3f), truthful mirrored
+  terminology, and an entry swap only when 3a's scoring says another entry clearly beats one on
+  the page (or a HYBRID swap requires it). Pull one entry with
+  `python bin/jobkit.py pool entry "<name>"` (it prints the entry plus its alternate framings).
+  Do NOT load `jobkit pool tex` on this path. Steps 3a–3f apply only to what you change.
+- `NO_BASE` / `BASE_STALE`, or `--fresh` in the prompt: tailor from scratch as below, and say so
+  in your return so the user can re-set the base.
+
+**From scratch (fallback only).** Read the style guide and `master\profile.md`. Get the pool with
+`python bin/jobkit.py pool tex`. **Never read `master\content-pool.tex` directly.** Copy
+`master\resume.cls` into the application folder unchanged, then **Write**
+`<application-folder>\Resume.tex` from the pool text already in context.
+
+**3a. Score and select Experience and Projects.** Everything in the pool competes fresh on
+every run.
+1. List every Experience entry and every Project, using the `% RELEVANCE:` comment above
+   each as a starting signal. A run whose selection list is shorter than the pool skipped one.
+2. Score each 0-3 against the posting (0 irrelevant, 1 tangential, 2 related, 3 directly matches
+   a named requirement).
+3. Rank within each section and select, respecting floors: **Experience never below 3 of 4;
+   Projects never below 2; total never below 6.** Default to **4 Experience + 2 Projects or
+   3 + 3**, whichever scores higher; fall to 3+2 only if a 6th entry would genuinely score 0.
+4. For kept Experience entries, use a `% --- ... framing (swap in for ...) ---` alternate block
+   when it better matches the posting's track: same facts, different emphasis.
+5. Experience order is fixed reverse-chronological regardless of score. Projects MAY be reordered.
+6. Record kept / dropped and a 1-line reason for every pool item (feeds step 6).
 
 **3b. Rewrite and lay out.**
-- Reorder Technical Skills rows by relevance to the posting (rows only, never invent or drop a row's content beyond the do-not-list rule in resume-style.md).
-- Rewrite bullets per the style guide (XYZ formula, agreed voice). Mirror the posting's terminology ONLY where truthful (pool "CI pipelines" → posting "CI/CD" is fine; claiming unused tech is not).
-- **Keep every bullet to at most 2 wrapped lines.** If a bullet stitches two separate accomplishments together with "X, then Y" / "X, then added Y", split it into two bullets instead (respecting the entry's 2-3 bullet cap) rather than stretching one long sentence. See `resume-style.md` 2026-08-02.
-- Preserve the content pool's LaTeX preamble, macros, and layout — content edits only.
-- Top third of the page gets the strongest, most posting-relevant material (summary + first bullets of most relevant experience/project).
-- Strip every `%`-comment (relevance tags, alternate-framing blocks not used, guardrail notes) from the compiled copy — those are pool-only annotations, not resume content.
+- **The `jobkit skills` output decides every skill question.** It matches the posting against
+  `master\skills-inventory.md`:
+  - `TRUE <posting spelling> -> <page wording> [row] (level) | never: ...` — put it on the page
+    using **exactly that page wording**, in that row, never stretched into anything on its
+    `never:` list. `level`: `shipped`; `reviewed` (they audited someone else's system, e.g. Azure);
+    `coursework` (skills row only, last in its row, never in the summary or a bullet). A
+    `[Project]` row (Next.js, React Native) stays in project tech-tags and bullets and **never**
+    enters the skills table.
+  - `BANNED <term>`, `GAP <keyword>`, `UNKNOWN <term>` — never on the page in any form. List
+    them under genuine gaps; list `UNKNOWN`s under pool gaps too so the user can add a row.
+  - Do not judge "is this keyword true?" yourself. If you believe a real skill is missing from
+    the inventory, do not add it to the résumé: say so under pool gaps.
+- **Rebuild the Technical Skills table for this posting** (style guide → Skills section): order
+  rows by relevance, add every TRUE tool, add the Practices row when it qualifies, drop or merge
+  rows with zero overlap. Nothing enters the table that is on neither the pool's skills table
+  nor a non-banned inventory row.
+- **Keyword-coverage pass.** ATS matching is literal: every TRUE keyword appears on the page
+  **verbatim in the posting's own spelling** (`full stack` vs `full-stack`, `back-end` vs
+  `backend`, `CI/CD`, `ETL`, `REST APIs`). Tools go in the skills table; practices in the
+  Practices row or a bullet; domain phrases in the summary or a bullet. This changes the
+  spelling and placement of true facts; it never creates one.
+  The gate counts a keyword as covered when EITHER its posting spelling or its row's page
+  wording is on the page. A `COVERED-BY-WORDING` line means only the wording is there: the
+  sanctioned way to add the posting's spelling too is a parenthetical beside the wording,
+  `Machine Learning (ML)`, `monitoring and alerting (observability)`, never a new claim. A
+  spelling on the row's own `never:` list (RAG) is left off on purpose.
+- Rewrite bullets per the style guide (XYZ formula, agreed voice). Mirror the posting's
+  terminology ONLY where truthful (pool "CI pipelines" → posting "CI/CD" is fine).
+- **Every bullet at most 2 wrapped lines.** A bullet stitching two accomplishments with "X, then
+  Y" is split in two (respecting the entry's 2-3 bullet cap).
+- Preserve the pool's LaTeX preamble, macros and layout: content edits only.
+- Top third of the page carries the strongest, most posting-relevant material.
+- Strip every `%`-comment from the compiled copy.
 
-**3c. Portrayal pass (added 2026-08-31). Run after 3b, before the factual audit.**
-Five checks, each one a defect actually observed on shipped output. Do all five every run.
+**3c. Portrayal pass. Run after 3b, before the factual audit. All five, every run.**
+1. **Tense.** An entry whose end date is not `Present` leads every bullet with a past-tense
+   verb; the `Present` entry leads with present tense (if the pool stores the current role in past tense, fix it in the copy). Fix it in the copy, never in the pool.
+2. **One metric in the Professional Summary.** Weave in the single strongest metric already on
+   this page for this posting's track. It must come from a bullet that is on the page; the
+   bullet keeps the detail. Never add a metric the page does not already carry.
+3. **Summary/bullet scope agreement.** When a bullet carries an environment qualifier ("in a research lab environment", "on test data"), the summary
+   must agree with it. Scope only ever moves DOWN.
+4. **Verb openers.** No first word of a bullet may repeat on the page. Reword the weaker bullet.
+   Never fix a collision with a duty phrase: `Served as`, `Responsible for`, `Worked on`,
+   `Helped with` are banned openers.
+5. **Bold metrics survive.** Every `\textbf{}` around a number in the pool stays bold. Design
+   counts that the pool does not bold (`7-rung`, `4 tools`) stay unbold.
 
-1. **Tense.** For every entry whose end date is not `Present`, every bullet leads with a past-
-   tense verb. For the entry that IS `Present`, every bullet leads with present tense. If the pool
-   stores the current role's bullets in past tense, fix the tense in the copy, never in the pool.
-
-2. **One metric in the Professional Summary.** The pool's summary carries no numbers, and the
-   summary is the top-third's most valuable block. Weave in the single strongest metric already
-   selected onto this page for this posting's track (the accuracy figure for an ML read, the scale figure for a full-stack read). The number must come from a
-   pool bullet that is on the page, and the summary is the *anchor* -- the bullet keeps the
-   surrounding detail. Never add a metric the page does not already carry.
-
-3. **Summary/bullet scope agreement.** Whenever a bullet carries an environment qualifier
-   ("in a research lab environment", "built and unit-tested", "on test data"), re-read the
-   summary for the same claim and make it agree. A summary saying `shipped production-grade
-   models` above a bullet saying `in a research lab environment` is worse than either
-   wording alone -- it reads as caught rather than careful. Scope only ever moves DOWN.
-
-4. **Verb openers.** List the first word of every bullet on the page. No opener may repeat
-   (rule 2026-07-23.A). Reword the weaker bullet on any collision. Never resolve a collision by
-   swapping a strong verb for a duty phrase: `Optimized course administration ... as primary
-   POC` must not become `Served as primary point of contact for ...`. `Served as`, `Responsible
-   for`, `Worked on`, `Helped with` are banned openers regardless of what they fix.
-
-5. **Bold metrics survive.** Every `\textbf{}` around a number in the pool stays bold in the
-   tailored copy. Bolded figures are what the six-second F-scan lands on; a rewrite that
-   flattens them is a regression even when the words improve.
-
-**3d. Project links.** Where a selected project has a real public repo or demo that the
-pool records, put it in that project's header next to the tech tag with `\href`. Only link
-what the pool records as existing and public — never invent a URL, a personal site, or a
-demo link. If the pool names no link for that project, the header stays bare. Never prompt
-the user about links; if they want one, they will add it to the pool.
+**3d. Project links.** Where the pool records a real public repo or demo, put it in that
+project's header next to the tech tag: `\item \textbf{<Project>} \textit{(<techs>)} \hfill
+\href{<url>}{<shown>}`. Never invent a URL. Which projects are linked is settled in the pool; never prompt the user about links.
 
 **3e. Routing rules live in the pool, not in your judgment.** When an entry carries
 `% --- ALTERNATE ... (swap in for ...) ---` blocks, the comment states the trigger (e.g.
-"only when the posting names DAST"). Follow the trigger literally; do not pick an alternate
-by feel, and never use two alternates for the same bullet. When the pool marks a project as
-"goes FIRST for postings naming X", honour it — do not bury the strongest entry out of
-habit.
+"only when the posting names DAST"). Follow the trigger literally; never pick an alternate
+by feel, and never use two alternates for the same bullet.
+
+**3f. Project ordering.** When the pool marks a project as "goes FIRST for postings naming
+X", honour it; do not bury the strongest entry out of habit.
 
 ### 4. Factual audit (before compiling)
-**First run `python bin/jobkit.py pool notes "<entry>"` for every entry you kept.** That block
-holds the VERIFIED PROJECT METRICS and the deliberately-excluded-claims list, and `pool tex`
-strips it — without pulling it back, the audit has nothing to check against. Mandatory, not optional.
+**First run `python bin/jobkit.py pool notes "<entry>"` for every entry you kept** (the VERIFIED
+PROJECT METRICS and the excluded-claims list; `pool tex` strips them). Mandatory.
 
-Go claim-by-claim through the tailored copy. For each bullet/skill/date: identify the master or profile line it traces to. Anything untraceable → silently revert that claim to the master's wording. This is a verification pass, not a formality.
+Go claim by claim through the tailored copy (on the track-base path: every line you changed).
+Each bullet, skill and date must trace to a master or profile line. Anything untraceable →
+revert to the master's wording.
+
+**Then `python bin/jobkit.py audit <application-folder>\Resume.tex`:**
+- `audit FAIL` — a number on the page exists nowhere in the pool or profile. Fix and re-run.
+  Never ship a FAIL.
+- `audit NUMBER-CONTEXT` — the number is in the pool beside different words ("12-person" vs "12
+  boards"). Same measurement → fine; otherwise revert.
+- `audit WARN` — a tech-looking term not in the pool. A truthful mirror of the posting's wording
+  for something the pool records → keep it and list it under rewordings to rehearse; a new
+  claim → revert it.
+- `audit OK` — nothing to do. The script catches invented tokens, not drifted meaning; your
+  claim-by-claim pass is what catches scale inflation.
 
 ### 5. Compile & enforce ONE FULL page
 `& "<WORKSPACE>\bin\tectonic.exe" -X compile "<application-folder>\Resume.tex" --outdir "<application-folder>"`
-Page check: `python bin/jobkit.py pagefit <application-folder>/Resume.pdf`
-prints `pages=N gap=Npt (N%) verdict=FULL|SHORT|OVERFLOW`. **Use this, never a rendered image
-read** — cheaper and objective. Calibrated on real output: good runs land at 22–29pt; the two
-runs that shipped visibly short (Max Tech, Twitch) were 65pt. Threshold: gap <= 40pt = FULL.
+then `python bin/jobkit.py pagefit <application-folder>/Resume.pdf` →
+`pages=N gap=Npt (N%) verdict=FULL|SHORT|OVERFLOW`. **Use this number, never a rendered image.**
+Good runs land at 22–29pt; gap <= 40pt = FULL.
 
-The target is **one page, filled to near the bottom margin** — not merely "under two pages":
+The target is **one page, filled to near the bottom margin**:
 - **>1 page** → trim the lowest-relevance bullets and recompile.
-- **`verdict=SHORT`** → this is a LOOP, not a one-shot menu, and it is a MANDATORY GATE, not optional cleanup — do not proceed to step 6 while skipping it (added 2026-08-06 after two same-day runs, Max Tech and Twitch, both compiled with visible bottom white space and were reported as done without the loop actually firing). After every lever below, recompile and **read the produced PDF again** to actually look at how much white space remains — don't infer "page is full" from having applied a lever or from a match-report note; only the rendered page is evidence. Before moving to step 6, state in one line which levers were checked and what the final rendered page looked like (e.g. "levers 1-5 checked, <filler entry> added, page now full to bottom margin") — this line is the gate; if you cannot honestly write it, the loop isn't done. Keep applying the next lever and re-checking until the bottom margin is close to full or every lever is exhausted. Order of levers:
+- **`verdict=SHORT`** → a LOOP and a MANDATORY GATE. After every lever, recompile and **re-run
+  `pagefit`**: its `gap=` is the only evidence. Before step 6, state in one line which levers
+  were applied and the final `pagefit` line; if you cannot honestly write it, the loop is not
+  done. Levers, in order:
   1. restore trimmed bullets,
-  2. pull in the next-highest-scoring dropped Experience/Project entry from step 3a's ranking (at its normal 2-3 bullet length),
+  2. pull in the next-highest-scoring dropped entry from 3a (at its normal 2-3 bullets),
   3. restore the Education "Relevant Courses" line,
-  4. add real detail to the most relevant entry.
-  5. **Final catch-all:** if, after re-checking the rendered PDF, space still remains and <filler entry> isn't already on the page, add it back with a single dense bullet — regardless of how large or small the remaining gap is (no minimum-gap gate; see the <filler entry> exception in `resume-style.md` 2026-08-02). This step always runs before accepting a short page.
+  4. add real detail to the most relevant entry,
+  5. **final catch-all:** if still `SHORT` and <filler entry> is not on the page, add it with
+     a single dense bullet, whatever the remaining gap. This always runs before accepting a
+     short page.
   Never pad with filler or invented content.
-- **Every experience and every project must have ≥2 bullets, EXCEPT <filler entry> which may run with exactly 1** as a fine-grained page-fill lever (see `resume-style.md` 2026-08-02). If trimming would leave any other entry with one bullet, restore a second or drop the entry entirely.
+- **Every experience and project has ≥2 bullets, EXCEPT <filler entry>, which may run with
+  exactly 1.** If trimming would leave another entry with one bullet, restore a second or drop
+  the entry.
 
-**5a. ATS text-layer gate (added 2026-08-30, MANDATORY, runs once the page-fit loop passes).**
-The page can look perfect and still parse wrong: an ATS reads the PDF's extracted *text layer*,
-not the rendering. XeTeX + Calibri reverse-maps every literal `-` to U+2010 HYPHEN, so
-`scikit-learn`, `<exam code>`, `AES-256-GCM`, `full-stack` and even the phone number are invisible
-to a parser searching the ASCII spelling. Measured on the 2026-08-30 D. E. Shaw resume:
-**53 broken hyphens**, i.e. every hyphenated keyword on the page.
+**5a. ATS text-layer gate (MANDATORY, after the page-fit loop passes).** XeTeX + Calibri maps
+every literal `-` to U+2010, so hyphenated keywords are invisible to a parser.
+```
+python bin/jobkit.py atsfix "<application-folder>/Resume.pdf"
+```
+It rewrites the text layer and prints `atscheck pages=N badhyphen=N other=<chars> verdict=OK|WARN`.
+Run it **after the final compile**: any recompile undoes it. Do not proceed until `verdict=OK`.
+If `other=` names an unfamiliar character, report it in the match report.
 
-```
-python bin/jobkit.py atscheck "<application-folder>/Resume.pdf"
-```
-prints `atscheck pages=N badhyphen=N other=<chars> verdict=OK|WARN` plus the at-risk keyword
-tokens. On `WARN` with `badhyphen>0`, run the fix and re-check:
-```
-python bin/jobkit.py atsfix   "<application-folder>/Resume.pdf"
-python bin/jobkit.py atscheck "<application-folder>/Resume.pdf"
-```
-`atsfix` rewrites only the ToUnicode CMaps (U+2010/2011/2012/2212 -> `-`); content streams are
-untouched, so the rendered page is unchanged and en-dashes in date ranges survive. Run it
-**after the final compile** -- any recompile undoes it. Do not proceed to step 6 until
-`atscheck` prints `verdict=OK`. If `other=` names an unfamiliar character, report it in the
-match report rather than silently rewriting it.
+**5b. No auto-hyphenation.** Every resume carries, directly after `\begin{document}`:
+`\hyphenpenalty=10000 \emergencystretch=2em` (the three bases already do; add it on the
+from-scratch path, never in `master\resume.cls`). Breaks at a real hyphen are fine. This can
+push a bullet onto an extra line: rerun `pagefit` after any edit, and on OVERFLOW tighten the
+bullet whose last line is a one- or two-word orphan (same facts, fewer words) before trimming
+content.
 
-Ignore the `Overfull \hbox (30.0pt)` warning at `\begin{document}` — it comes from the class file's `\printname` and is present in the untouched master. Any *other* overfull warning is real and must be fixed.
-If compile errors: fix only what your edits broke; if the master itself fails, stop and tell the user.
+Ignore the `Overfull \hbox (30.0pt)` warning at `\begin{document}` (it is in the untouched
+master). Any *other* overfull warning is real. On compile errors fix only what your edits
+broke; if the master itself fails, stop and tell the user.
 
 ### 6. Match report → `match-report.md`
 Headline block (readable in <30 seconds):
@@ -152,64 +229,100 @@ Headline block (readable in <30 seconds):
 VERDICT: Strong | Worth it | Skip
 <one sentence of reasoning>
 Red flags: <n> | Rewordings to rehearse: <n>
+Keyword coverage: <on page>/<posting keywords> (<X>%) | true-but-missing: <n>
 ```
-Below the fold: requirements met (each with the exact resume line proving it), genuine gaps (never papered over), red flags, keywords woven in, top-third framing chosen (one line — logged to tracker), **pool gaps** (any place a bullet named what was built but the pool records no purpose/outcome for it, or a project with no link on record, so the user can decide whether to add the fact to the master), **rewordings to rehearse** (every bullet whose key terms drift notably from the pool's wording, so nothing surprises the user in an interview).
+**Keyword coverage gate.** Copy the line from
+`python bin/jobkit.py skills <application-folder> --pdf <application-folder>\Resume.pdf`
+(after the final compile + `atsfix`). `true-but-missing` must be **0** before you leave step 5;
+if one truly cannot fit, list it with the reason. Never compute the line by hand and never edit
+`job-posting.md` to change it. `NO_KEYWORDS posting too thin to score` means the gate gave NO
+evidence: say exactly that, it is not a pass. A `THIN` marker means few keywords were found: read
+the requirements by hand and put what the scan missed under genuine gaps.
 
-**Selection** (from step 3a): every Experience and Project entry in the content pool, marked kept or dropped, with the 1-line reason. Example:
+Below the fold: requirements met (each with the exact resume line proving it), genuine gaps
+(never papered over; include every `GAP`, `BANNED` and `UNKNOWN`), red flags, keywords woven in,
+top-third framing chosen (one line, logged to the tracker), **pool gaps** (a bullet that names
+what was built with no purpose or outcome in the pool, a project with no link on record, every
+`UNKNOWN`, any skill you believe is missing from the inventory), **rewordings to rehearse**
+(every bullet whose key terms drift from the pool, every `coursework` or `stated` item used).
+
+**Selection** (from 3a): every Experience and Project entry, kept or dropped, with a 1-line
+reason; the base used; HYBRID and swaps if any. Example:
 ```
-Selection:
+Selection:  base = security (TRACK security=5 software=4 ai=2, HYBRID security+ai)
   Experience — <Employer A>: KEPT (leadership + secure tooling, score 2)
-  Experience — <Employer B>: KEPT (ML framing swapped in, score 3, direct match)
-  Experience — <filler entry>: DROPPED (score 0, no teaching/mentorship angle in posting)
-  Experience — <Employer D>: KEPT (floor — 3rd of 3 required, score 1)
-  Project — <Project A>: KEPT, ORDERED FIRST (score 3, posting names LLM agents)
-  Project — <Project B>: KEPT (score 2)
-  Project — <Project C>: DROPPED (score 1, posting is pure security)
-  Project — <Project D>: DROPPED (score 0)
+  Experience — <Employer B>: KEPT (ML framing swapped in per HYBRID rule, score 3)
+  Experience — <filler entry>: DROPPED (score 0, no teaching angle in posting)
+  Project — <Project A>: KEPT, ORDERED FIRST (score 3; policy-gate bullet per hybrid-swaps.md)
+  Project — <Project E>: DROPPED (displaced by the mandatory HYBRID swap)
 ```
-Score every project in the pool — a run whose selection list is shorter than the pool has
-skipped a candidate.
 
 ### 7. Screener answers → `screener-answers.md`
-For each question found in the posting plus the standard set (why this company, availability, salary, work auth): 50–120 words, first sentence answers the question outright, one concrete detail from real experience, zero filler ("I am writing to express..." is banned). Locked-field questions: one line straight from profile, marked `🔒 LOCKED — fill from profile, recap at handoff` (they are filled without confirmation; see hard rule 4).
-For narrative/behavioral questions ("a challenge", "proud of", "how do you use AI"), pick with `python bin/jobkit.py qa list` (23 headings, each tagged with its angle), then pull
-only the chosen one or two with `python bin/jobkit.py qa get "<substring>"`. **Never read
-`qa-bank.md` whole** — it is 58KB and a run uses 4–8% of it. Use only ONE or TWO of the most fitting stories for that question and role — never dump multiple examples or list every project (qa-bank usage rule). Pick the single best-matching angle, or at most two that complement each other, and keep the rest in reserve.
+For each question in the posting plus the standard set (why this company, availability, salary,
+work auth): the first sentence answers the question outright, one concrete detail from real
+experience, zero filler ("I am writing to express..." is banned). Locked-field questions: one
+line straight from profile, marked `🔒 LOCKED — fill from profile, recap at handoff`.
 
-### 7a. Cover letter (on-request only)
-Not part of the default flow — skip unless the user explicitly asks for one on that run (e.g. "also do a cover letter for this one"). When asked: write `cover-letter.tex` in the application folder using the same factuality rules as the resume (every claim traces to master/profile, same voice/style rules from `resume-style.md`), then compile to `cover-letter.pdf` with tectonic — never leave it as markdown/tex-only, since some ATSes require a PDF upload.
+**Punctuation.** Inside an answer use only commas and periods (plus a question mark or
+apostrophe where grammar needs one). **No colons, no semicolons, no dashes of any kind** as
+sentence punctuation: restructure instead ("I made three choices: A, B and C" → "I chose A, B
+and C"). This covers text pulled from `qa-bank.md`: rewrite it as you pull it, never paste it
+raw. Colons inside a URL, a time or a code identifier are fine. Before finishing, search the
+answers for `: ` and `;` and fix every hit.
 
-### 8. Checkpoint (trust-aware)
-- **`--review` flag: FULL REVIEW / teaching mode.** Show the tailored resume changes with explanations of why each bullet changed, the full match report, and every screener answer. Wait for approval. When the user corrects voice/phrasing: apply the fix AND append the lesson to `resume-style.md` under "## Learned corrections" so it persists.
-- **Otherwise: spot-check mode.** Show only the match-report headline block, then proceed straight to the browser.
+**Length is set by the kind of question, not by the box.** Count characters.
 
+| Question kind | Words | **Characters** | Examples |
+|---|---|---|---|
+| Factual / locked screener | 1 line | ≤ 150 | availability, salary, work auth, notice period |
+| Why this company / why this role | 100–150 | **600–900** | "Why Cursor?", "What interests you about this team?" |
+| Narrative / behavioral | 150–250 | **900–1,500**, aim ~1,200 | "a project you're proud of", "a challenge", "how do you use AI" |
+| Cover letter (7a, on request only) | 250–400 | **1,500–2,400** | |
+
+- **Hard ceiling for any single answer: 2,700 characters (~450 words).**
+- **A stated limit is a ceiling, never a target.** Never lengthen an answer to approach a limit.
+- **Box capacity is not a recommendation** (Workday allows 4,000 characters, Ashby `LongText` is
+  unbounded). Use the table.
+- Record the character count next to each answer (`(1,180 chars)`) so the fill phase can verify
+  the paste landed whole.
+
+For narrative / behavioral questions, pick with `python bin/jobkit.py qa list`, then pull only
+the chosen one or two with `python bin/jobkit.py qa get "<substring>"`. **Never read
+`qa-bank.md` whole.** Use only ONE or TWO of the most fitting stories per question; never list
+every project.
+
+### 7a. Cover letter (on request only)
+Skip unless the user asks for one on that run. When asked: write `cover-letter.tex` in the
+application folder at **250–400 words (1,500–2,400 characters)**, same factuality and voice
+rules as the résumé, then compile to `cover-letter.pdf` with tectonic. Never leave it as
+tex-only: some ATSes require a PDF.
+
+### 8. (The checkpoint belongs to the orchestrator. Go straight to 8b.)
 
 ---
 
-### 8b. Write `form-pack.md` — the handoff to the fill phase
+### 8b. `form-pack.md` — generated, then completed
+The fill phase reads **only this file**. Do not write it by hand.
+```
+python bin/jobkit.py formpack "<application-folder>" --company "<C>" --role "<R>" \
+  --url "<resolved apply URL>" --platform <platform> --source "<referral source>" \
+  --pay "<published band or none>" --posted "<posting date line>"
+```
+Run it **after** the final compile + `atsfix`. It writes the header, the platform playbook,
+identity, locked fields, defaults, education, certification, languages, transcripts, the
+work-experience entries exactly as they stand on the PDF, and the raw form schema.
+`FORMPACK_FAILED …` means the résumé layout no longer parses or the PDF is stale: fix the cause
+(usually recompile) and re-run; only if it still fails, write the pack by hand in the same layout.
 
-The fill phase reads **only this file**. It must never need `content-pool.tex`, `qa-bank.md`,
-`resume-style.md`, or the tailored `.tex`. Write `<application-folder>\form-pack.md` with:
-
-- **Identity** — name, email, phone, address, LinkedIn, GitHub (`profile.md`)
-- **Locked fields** — work auth, sponsorship, salary, notice period and the four EEO answers,
-  resolved to final values (hard rule 4: these get filled, not confirmed)
-- **Education** — both degrees with start AND end month/year, degree, major, GPA (`form-data.md`)
-- **Work experience** — the entries that made it onto the PDF, in PDF order (most recent END
-  date first, current role at the top — SKILL.md rule 9b), each with title,
-  employer, location, dates, currently-work-here flag, reason for leaving, and **that entry's
-  tailored bullets as plain text with LaTeX stripped** (`\%`→`%`, `--`→`–`, `\&`→`&`, `\$`→`$`)
-- **Certification, languages, standard yes/no defaults** (`form-data.md`)
-- **Screener answers**, verbatim
-- **Resume PDF absolute path**
-- **Fill plan** — run `python bin/jobkit.py schema <url>`. On Ashby/Greenhouse it returns the
-  whole form; write an ordered `field key → value` list with every dropdown answer already
-  matched against the schema's own option strings, and flag which fields need a real click
-  rather than a synthetic one. If the call prints `NO_SCHEMA_API` or `SCHEMA_FAILED`, write
-  `NO SCHEMA — DOM path` and let the fill phase explore. **Never invent a fill plan.**
+Then open `form-pack.md` and replace its two `<!-- PREP AGENT … -->` markers, nothing else:
+- **FILL PLAN** (only when the pack contains a schema): an ordered `field key → value` list,
+  every dropdown answer matched to the schema's own option strings, fields needing a real click
+  flagged, name fields per the legal-name rule. No schema → the script already wrote
+  `NO SCHEMA — DOM path`. **Never invent a fill plan.**
+- **Screener answers**: `screener-answers.md` verbatim, character counts included.
+Add a short `## Notes for this posting` section only for what the script cannot know: a pay band
+outside <salary range>, a posting-specific yes/no ("previously worked at <Company>?" is already
+No), an unusual required upload.
 
 ### 8c. Return to the caller
-
-Report only: `VERDICT` + one-line reason, the folder path, the `pagefit` verdict, whether the
-résumé was reused (and from which application, with its score), and any question that could
-not be answered from the sources. Nothing else — everything else is on disk.
+The return format is fixed in your agent definition. Nothing else: everything else is on disk.

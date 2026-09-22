@@ -17,7 +17,10 @@ numbered wizard. MassCareers ran 11 steps, renumbering to 10 after the résumé 
 - **Account creation / sign-in** — prohibited.
 - **Electronic Signature (step 8)** — a full-name field that is explicitly "the electronic
   equivalent of a hand-written signature" and authorizes a **full background investigation**
-  plus transmission of PII to a third party. Always hand this to the user.
+  plus transmission of PII to a third party. Always hand this to the user. When handing it over,
+  say that this one takes the **legal** name (`<Full Name>` / `<legal last name>`), not the everyday one —
+  it feeds the background check, which is matched against the work-authorization record.
+  See `form-data.md` → **Name convention**.
 
 ## Mechanics
 - **`Save and Continue` is a full page navigation** (JSF postback), not AJAX. Never hold a JS
@@ -38,7 +41,7 @@ Taleo parses the uploaded PDF and pre-populates Education and Employment, **scra
 Observed on the first run:
 - An orphan 3rd education row: no institution, Program `INFORMATION SECURITY`, Level `Other`. Clear it.
 - Employer collapsed to `<Univ>` with an **empty** Job Title.
-- One entry's dates paired with another entry's job title.
+- <filler entry>'s dates (Aug–<Mon YYYY>) paired with the **<Employer D>** job title.
 Re-write every prefilled field from `form-pack.md`; never trust the parse (SKILL.md rule 9b).
 Order = PDF, most recent end date first; after `Save and Continue` re-read every block's
 Description textarea in full before moving on.

@@ -173,6 +173,28 @@ def split_pool():
 
 def cmd_pool(args):
     kept, dropped = split_pool()
+    if args.what == "entry":
+        # One Experience/Project entry plus its alternate framings -- for a run
+        # that started from a track base and needs to swap one entry in.
+        key = norm_text(args.entry)
+        if not key:
+            print("usage: pool entry \"<employer or project name>\"")
+            return 1
+        lines, out, block = kept.splitlines(), [], []
+
+        def flush():
+            if block and key in norm_text(" ".join(block)):
+                out.extend(block + [""])
+
+        for line in lines:
+            if (line.startswith("% RELEVANCE:") or re.match(r"^%\s*---", line)
+                    or line.startswith("\\end{rSection}") or FENCE.match(line)):
+                flush()
+                block = []
+            block.append(line)
+        flush()
+        sys.stdout.write("\n".join(out) + "\n" if out else "NONE no pool entry matches '{}'\n".format(args.entry))
+        return 0
     if args.what == "tex":
         sys.stdout.write(kept)
     else:
@@ -267,7 +289,7 @@ def cmd_pagefit(args):
 # Added 2026-08-30. The compiled PDF looks perfect on screen but an ATS reads
 # the *extracted text layer*, and XeTeX + Calibri emits U+2010 HYPHEN for every
 # literal "-" in the source. A parser searching the ASCII string "scikit-learn",
-# "full-stack" or "SY0-701" does not match "scikit‐learn". Same class of
+# "full-stack" or "AB1-234" does not match "scikit‐learn". Same class of
 # problem for the U+22C4 diamond separator on the contact line. This command
 # reads what the machine reads, not what the eye sees.
 
@@ -311,7 +333,7 @@ def cmd_atsfix(args):
     """Rewrite the PDF's ToUnicode maps so hyphens extract as ASCII '-'.
 
     XeTeX writes Calibri's hyphen glyph and xdvipdfmx reverse-maps it to
-    U+2010 HYPHEN, so every "scikit-learn" / "SY0-701" / "(555)-123-4567" in
+    U+2010 HYPHEN, so every "scikit-learn" / "AB1-234" / "(555)-123-4567" in
     the text layer is invisible to an ATS searching the ASCII spelling. Only
     the ToUnicode CMap changes -- the rendered page is byte-identical visually.
     """
@@ -345,13 +367,14 @@ def cmd_atsfix(args):
             font[NameObject("/ToUnicode")] = ref
             fixed += 1
 
-    if not fixed:
-        print("atsfix no-change {}".format(args.pdf))
-        return 0
-    with open(args.pdf, "wb") as fh:
-        writer.write(fh)
-    print("atsfix rewrote {} ToUnicode map(s) in {}".format(fixed, args.pdf))
-    return 0
+    if fixed:
+        with open(args.pdf, "wb") as fh:
+            writer.write(fh)
+    print("atsfix {} in {}".format(
+        "rewrote {} ToUnicode map(s)".format(fixed) if fixed else "no-change", args.pdf))
+    # Self-verifying: one call replaces the old atscheck -> atsfix -> atscheck
+    # sequence. The verdict line below is the gate.
+    return cmd_atscheck(args)
 
 
 # --------------------------------------------------------------------- similar
@@ -507,6 +530,8 @@ def http_json(url, payload=None):
 
 
 def cmd_schema(args):
+    import jobprep
+    args.url = jobprep.canonical_url(args.url)      # ?gh_jid=<id> on an employer domain -> Greenhouse
     ats = detect_ats(args.url)
     print("ats={}".format(ats))
     try:
@@ -676,6 +701,13 @@ def cmd_sweep_list(args):
     return 0
 
 
+TRACKS = ("security-analyst", "software-engineer", "ai-engineer")
+TRACK_ALIASES = {"security": "security-analyst", "software": "software-engineer",
+                 "swe": "software-engineer", "ai": "ai-engineer", "ml": "ai-engineer",
+                 "ai engineer": "ai-engineer", "software engineer": "software-engineer",
+                 "security analyst": "security-analyst"}
+
+
 def cmd_scan_add(args):
     """Read a JSON array from stdin — [{title, company, url, location, track,
     connector, note}] — and write each into job-matcher-feed/<track>/<date>/
@@ -692,25 +724,29 @@ def cmd_scan_add(args):
         print("ERROR invalid JSON on stdin: {}".format(e))
         return 1
 
-    added, skipped = 0, 0
+    added, skipped, bad = 0, 0, []
     today = datetime.date.today().isoformat()
     for item in items:
         url = item.get("url", "")
         if not url:
             skipped += 1
             continue
-        track = item.get("track") or "unclassified"
+        # `track` is a folder name. A loose value ("security") used to create a
+        # second folder and split the queue, so aliases are folded and anything
+        # else is refused rather than guessed.
+        raw_track = (item.get("track") or "").strip().lower()
+        track = TRACK_ALIASES.get(raw_track, raw_track)
+        if track not in TRACKS:
+            bad.append("{} (track={!r})".format(url, item.get("track")))
+            continue
         job_id = hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
 
-        track_dir = os.path.join(SWEEP_FEED, track)
-        if os.path.isdir(track_dir):
-            exists = any(
+        # Dedupe across EVERY track, not just this one.
+        if os.path.isdir(SWEEP_FEED) and any(
                 fn == job_id + ".json"
-                for _, _, files in os.walk(track_dir) for fn in files
-            )
-            if exists:
-                skipped += 1
-                continue
+                for _, _, files in os.walk(SWEEP_FEED) for fn in files):
+            skipped += 1
+            continue
 
         record = {
             "job_id": job_id,
@@ -731,6 +767,11 @@ def cmd_scan_add(args):
         added += 1
 
     print("scan-add: {} added, {} skipped (already queued or no url)".format(added, skipped))
+    if bad:
+        print("REJECTED {} -- track must be one of {}:".format(len(bad), " | ".join(TRACKS)))
+        for b in bad:
+            print("  " + b)
+        return 1
     return 0
 
 
@@ -810,7 +851,7 @@ def main():
 
     sub.add_parser("count").set_defaults(fn=cmd_count)
 
-    pl = sub.add_parser("pool"); pl.add_argument("what", choices=["tex", "notes"])
+    pl = sub.add_parser("pool"); pl.add_argument("what", choices=["tex", "notes", "entry"])
     pl.add_argument("entry", nargs="?", default=""); pl.set_defaults(fn=cmd_pool)
 
     q = sub.add_parser("qa"); q.add_argument("what", choices=["list", "get"])
@@ -846,6 +887,41 @@ def main():
     sp.set_defaults(fn=cmd_sweep_prune)
 
     jobtrack.register(sub)
+
+    import jobprep
+    me = sub.add_parser("meta"); me.add_argument("url")
+    me.add_argument("--write", action="store_true", help="create the folder + job-posting.md")
+    me.add_argument("--posted", default="", help='e.g. "2026-09-17 (2 days ago)" or "unknown"')
+    me.add_argument("--source", default=""); me.set_defaults(fn=jobprep.cmd_meta)
+
+    tr = sub.add_parser("triage"); tr.add_argument("target", help="application folder or job-posting.md")
+    tr.set_defaults(fn=jobprep.cmd_triage)
+
+    fp = sub.add_parser("formpack"); fp.add_argument("folder")
+    for flag in ("--company", "--role", "--url", "--platform", "--source"):
+        fp.add_argument(flag, required=True)
+    fp.add_argument("--pay", default=""); fp.add_argument("--posted", default="")
+    fp.set_defaults(fn=jobprep.cmd_formpack)
+
+    au = sub.add_parser("audit"); au.add_argument("tex"); au.set_defaults(fn=jobprep.cmd_audit)
+
+    sk = sub.add_parser("skills"); sk.add_argument("target", help="application folder or job-posting.md")
+    sk.add_argument("--pdf", default="", help="tailored resume PDF: adds the keyword-coverage gate line")
+    sk.set_defaults(fn=jobprep.cmd_skills)
+
+    ba = sub.add_parser("base"); ba.add_argument("what", choices=["use", "set", "list"])
+    ba.add_argument("track", nargs="?", default=""); ba.add_argument("folder", nargs="?", default="")
+    ba.set_defaults(fn=jobprep.cmd_base)
+
+    fl = sub.add_parser("fail"); fl.add_argument("what", choices=["add", "list", "close"])
+    fl.add_argument("id", nargs="?", default="", help="F-0001 (close only)")
+    fl.add_argument("--phase", choices=jobprep.FAIL_PHASES, default="fill")
+    fl.add_argument("--where", default="", help="platform, script command or file the failure lives in")
+    fl.add_argument("--happened", default=""); fl.add_argument("--expected", default="")
+    fl.add_argument("--workaround", default=""); fl.add_argument("--fix", default="")
+    fl.add_argument("--folder", default=""); fl.add_argument("--note", default="")
+    fl.add_argument("--all", action="store_true"); fl.add_argument("--wontfix", action="store_true")
+    fl.set_defaults(fn=jobprep.cmd_fail)
 
     args = p.parse_args()
     if not getattr(args, "fn", None):

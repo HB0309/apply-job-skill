@@ -26,7 +26,7 @@ TOKEN_PATH = os.path.join(HERE, "token.json")
 REAUTH_HINT = (
     "Gmail token is expired or revoked and no valid refresh token remains.\n"
     "Re-authorize by running, at a terminal you control:\n"
-    "    cd D:/Projects/job-applications/bin/gmail && python gmail_auth.py\n"
+    "    cd <WORKSPACE>/bin/gmail && python gmail_auth.py\n"
     "A browser window will open for Google sign-in."
 )
 

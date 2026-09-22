@@ -1,30 +1,26 @@
 # Resume Voice & Style Guide
 
 The agreed register: **concrete professional with a touch of corporate polish**. Sharp,
-metric-led, but slightly fuller and more detailed sentences than telegraphic resume-speak.
-Every line must read like a strong human wrote it — never like an AI filled a template.
+metric-led, but slightly fuller sentences than telegraphic resume-speak. Every line must read
+like a strong human wrote it, never like an AI filled a template.
 
 ## The bullet formula (XYZ)
 Target shape: **"Accomplished X, as measured by Y, by doing Z."**
 Degrade gracefully when the master has no metric: **"Built X by doing Z."**
-NEVER invent a metric to complete the formula — metrics come from the master resume only.
+NEVER invent a metric to complete the formula.
 
-Good (agreed register — concrete, but full sentences with corporate vocabulary):
+Good (concrete, full sentences, corporate vocabulary):
 - "Reduced API response time by 40% by introducing Redis caching across the reporting service."
 - "Delivered a CI pipeline in GitHub Actions that cut deployment failures from roughly five per week to under one."
-- "Partnered with a three-person design team to ship the onboarding flow now used by 2,000+ users."
 
-Too telegraphic (sharpen less, detail more):
-- "Cut API time 40%. Redis."
-
-Too corporate (banned register):
-- "Spearheaded optimization initiatives, leveraging caching solutions to drive a 40% improvement in performance outcomes."
+Too telegraphic: "Cut API time 40%. Redis."
+Too corporate (banned register): "Spearheaded optimization initiatives, leveraging caching solutions to drive a 40% improvement in performance outcomes."
 
 ## Banned AI-tells
 - Buzzword stacking: "leveraged", "synergies", "cutting-edge", "results-driven", "dynamic" as filler
 - "Spearheaded", "orchestrated", "passionate about", "proven track record"
 - Starting consecutive bullets with the same verb
-- Vague outcome words with no substance: "enhanced efficiency", "optimized performance" (say what and by how much, or say what concretely changed)
+- Vague outcome words with no substance: "enhanced efficiency", "optimized performance" (say what and by how much, or what concretely changed)
 - Em-dash-heavy or semicolon-heavy prose in bullets
 
 ## Approved corporate vocabulary (used naturally, not stacked)
@@ -32,27 +28,33 @@ built, delivered, reduced, designed, shipped, partnered with, owned, led, implem
 streamlined, automated, migrated, cut, improved, launched
 
 ## Factuality rules (absolute)
-- Every claim traces to a specific line in `master\content-pool.tex` or `master\profile.md`.
+- Every claim traces to a specific line in `master\content-pool.tex` or `master\profile.md`;
+  skills may also come from a non-banned row of `master\skills-inventory.md`.
 - No invented numbers, tools, titles, dates, team sizes, or scope.
-- "Built" vs "co-built" vs "contributed to" — when the master is ambiguous about ownership, keep the master's wording; only the user upgrades a verb.
-- Mirroring posting terminology is allowed only when truthful (master "CI pipelines" → posting "CI/CD": fine; posting "Kubernetes" when master never mentions it: never).
+- "Built" vs "co-built" vs "contributed to": when the master is ambiguous about ownership, keep
+  the master's wording; only the user upgrades a verb.
+- Mirroring posting terminology is allowed only when truthful (master "CI pipelines" → posting
+  "CI/CD": fine; posting "Kubernetes" when the master never mentions it: never).
 
 ## Two-minute defensibility test
 Every rewritten bullet must pass: *"Could the user talk about this line for two minutes,
-unprepared, in an interview?"* If the rewording introduces vocabulary they wouldn't
-naturally use, either revert closer to the master's wording or list it under
-"rewordings to rehearse" in the match report. Nothing on the page may surprise them live.
+unprepared, in an interview?"* If a rewording introduces vocabulary they would not naturally use,
+revert closer to the master or list it under "rewordings to rehearse". Nothing on the page may
+surprise them live.
 
 ## ATS notes
 - Standard section names: Experience, Projects, Education, Skills (no clever renames).
 - Spell out an acronym once if the posting uses the long form: "continuous integration (CI)".
 - Keywords woven into bullets, never dumped as a comma-list beyond the Skills section.
 - Keep the master's one-column layout; no text boxes, images, or tables added.
+- The two-column skills tabular extracts cleanly (do not flatten it); italics are invisible to
+  parsers (keep the tags); the diamond separator is benign; the literal-hyphen problem is handled
+  by `atsfix`.
 
 ## Top-third rule
-The first third of the page decides the 6-second recruiter skim: summary line (if the
-master has one) + the first bullets of the most posting-relevant experience or project.
-Always place the strongest, most relevant material there; log the framing chosen to the tracker.
+The first third of the page decides the 6-second skim: the summary plus the first bullets of the
+most posting-relevant experience or project. Put the strongest, most relevant material there and
+log the framing chosen to the tracker.
 
 ## Standing rules (distilled from review sessions)
 

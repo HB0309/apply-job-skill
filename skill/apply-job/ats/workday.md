@@ -63,9 +63,14 @@ After the click, confirm the new page is the expected step and not a validation 
   then hand the browser to the user to finish the remaining pages rather than hammering Save.
 - **My Experience page: SKILL.md rule 9b in full — enter every Work Experience and Education
   block by hand from `form-pack.md`.** "Autofill with Resume" and "Use My Last Application"
-  both pre-populate these blocks and both have shipped wrong on
-  multiple employers' forms (blocks duplicated, titles/companies swapped, surname replaced by
-  "Lnu", fabricated GPA, truncated or missing descriptions). Treat whatever is pre-filled as absent: delete extra blocks, overwrite every field.
+  both pre-populate these blocks and both have shipped wrong: AT&T (4 blocks for 3 jobs),
+  Baker Hughes (titles/companies swapped), HPE (fabricated GPA), a Workday employer
+  (truncated description), Home Depot 2026-09-08 (description missing on a profile-carried
+  entry). Treat whatever is pre-filled as absent: delete extra blocks, overwrite every field.
+  **Exception — the legal-name fields.** Where the profile stores a legal surname that looks
+  like a placeholder, it may be correct: it can match the name on the work-authorization
+  document. Leave it and fill preferred-name fields normally — record the rule in your
+  own `form-data.md`.
   **Descriptions must be typed with real keystrokes** — a JS-set description passes the DOM
   read-back and is dropped on Save (Aderant 2026-09-03). After `Save and Continue`, when the
   page re-renders, re-read every block's full description and dates and compare to the pack

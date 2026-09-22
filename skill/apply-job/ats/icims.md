@@ -87,5 +87,7 @@ order, so create them most-recent-first.
   month" — follow it over the house day-15 default, and say so in the handoff.
 - A required SMS-consent select can ship pre-selected with **only** a consent option (no decline).
   Do not set it; flag it to the user as a standing marketing consent they are agreeing to.
-- Account linkage can prefill Legal First Name as the FULL name and Last Name as `Lnu`
-  ("last name unknown"). Always check and fix both.
+- Account linkage can prefill Legal First Name as the FULL name and the Last Name as a
+  placeholder. **That may be CORRECT — do not "fix" it before checking.** Where the profile's
+  legal name matches the work-authorization document, the legal field must keep that form.
+  Preferred-name fields are filled normally — record the rule in your own `form-data.md`.

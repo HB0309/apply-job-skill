@@ -22,8 +22,22 @@
   const key=e=>{const h=e.getRootNode().host;
     return (h&&h.getAttribute('label'))||e.getAttribute('aria-label')||e.placeholder||''};
   ```
-  Set values with the native setter, and dispatch events with **`composed:true`** so they cross
-  the shadow boundary (plain `bubbles:true` alone does not reach the Angular handler):
+  **CORRECTION 2026-09-10 (ServiceNow): the native-setter route below DOES NOT WORK on this
+  template.** Values set that way render in the input but never reach the Angular reactive-form
+  model, so Save/Next reports "Title is required" / "City is required" on fields that visibly
+  hold text. **Type every field with real keystrokes** (`computer` click + type), and for the
+  `SPL-INPUT` combobox fields (Title, Company, Office location, City, Institution) click the
+  suggestion row that appears ~45px below the field — typing alone does not commit them.
+  Other traps measured on that run:
+  - **`SPL-DATE-PICKER` (month-year):** type `YYYY-MM-DD`, then click the month cell in the popup
+    that opens. The popup's year header does NOT follow what you typed — step it with the
+    prev/next-year arrows first. Re-open the field to confirm the right month is highlighted.
+  - **Experience/Education lists stack newest-added ON TOP.** There is no reorder control, so add
+    entries in REVERSE PDF order (oldest first) to end up with PDF order on screen (rule 9b).
+  - Screenshots go flaky mid-run (`Page.captureScreenshot` timeouts, changing scale). Get click
+    coordinates from `getBoundingClientRect()` after `scrollIntoView` instead of from a screenshot.
+
+  The original setter recipe, kept only for reading state back:
   ```js
   Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,v);
   ['input','change','blur'].forEach(t=>

@@ -6,9 +6,25 @@ the application form in your Chrome browser, and stops on the final review scree
 click Submit. It also reads your Gmail for outcomes, keeps a tracker, and tells you which kinds
 of applications actually get replies.
 
-It was built and refined over ~400 real applications across Ashby, Greenhouse, Workday,
-Oracle CX, iCIMS, SmartRecruiters, Taleo, SuccessFactors and Talemetry. Every rule in it
-exists because something went wrong without it.
+It was built and refined over 693 tracked applications (432 sent) across Ashby, Greenhouse,
+Workday, Oracle CX, iCIMS, SmartRecruiters, Taleo, SuccessFactors, Talemetry, Phenom, Eightfold
+and PageUp. Every rule in it exists because something went wrong without it.
+
+## Measured, not claimed (2026-09)
+
+Pipeline metrics from the sessions that built it. Nothing here is estimated.
+
+| What | Measured |
+|---|---|
+| Rules the prep agent reads per posting | ~15.2k tokens before the instruction trim, ~11.2k after; `SKILL.md` 8.1k → 6.5k |
+| Cost of a gate (`posted`, `dup`, `meta`, `triage`) | a 30–200 token script call, in place of a full model prep run for every link |
+| Skills matching | `jobkit skills` returns ~500 tokens instead of a ~4.2k read of the inventory |
+| Résumé tailoring | editing a track base writes ~1.9k tokens; writing from the pool wrote ~5k |
+| Triage precision | on 50 hand-labelled postings the four text eligibility rules reproduced 33 of 33 skips with 0 false skips and raised the share of kept postings the user would apply to from 26% to 76%; on 150 real applications it skips 3 |
+| Ranking | the LLM ranking stages did no better than chance at *ordering* those 50 postings, so the value is in filtering, not ranking |
+| Keyword coverage | literal ATS keyword coverage on a sample résumé went from 6/30 (20%) to 13/30 after the inventory + coverage pass; the gate now reports a real fraction on every posting (it was a vacuous `0/0` on 9 of 12 runs before that fix) |
+| ATS text layer | `atsfix` repairs every literal hyphen in the PDF text layer (53 broken hyphens measured on one résumé before, 0 after); the no-hyphenation rule removes split words |
+| First live run after the overhaul | 16 links → 11 applied, 1 filled, 4 skipped; 20 skill failures logged by the pipeline itself and closed the same day through `failures.md` + `/apply-job fixes` |
 
 ## What it will never do
 
@@ -36,17 +52,22 @@ Claude adapts the slashes.
 
 ## Install
 
-1. **Copy the skill** into your Claude Code skills folder:
+1. **Copy the skill and the prep agent** into your Claude Code folders:
    ```
    cp -r skill/apply-job ~/.claude/skills/apply-job
+   cp agents/apply-job-prep.md ~/.claude/agents/apply-job-prep.md
    ```
+   Fill in the `<placeholders>` in `agents/apply-job-prep.md` (your degree title, how many
+   years of a stated requirement it covers, your legal-name rule). It pins the prep phase to
+   Opus and to a tool set that cannot fill forms.
 2. **Create a workspace** anywhere (e.g. `~/job-applications`) from `workspace/`:
    ```
    cp -r workspace ~/job-applications
    ```
    Put `tectonic` (or `tectonic.exe`) in `~/job-applications/bin/`.
-3. **Point the skill at the workspace.** In `~/.claude/skills/apply-job/SKILL.md` and
-   `references/inbox.md`, replace every `<WORKSPACE>` with your workspace path.
+3. **Point the skill at the workspace.** Replace every `<WORKSPACE>` in the skill files and the
+   agent definition with your workspace path, and `<skill folder>` / `<agents folder>` with the
+   two folders from step 1.
 4. **Run the setup interview** — in Claude Code, from the workspace folder:
    ```
    /apply-job setup
@@ -65,6 +86,15 @@ Claude adapts the slashes.
      education start dates, certification IDs, reason-for-leaving lines, the yes/no defaults.
    - Optional: `qa-bank.md` in the workspace — behavioural stories under `## Project` /
      `### Story` headings, used for screener text boxes only.
+   - `master/skills-inventory.template.md` → `master/skills-inventory.md`: one row per skill you
+     can defend, with evidence, the only wording allowed on the page and a never-say list.
+     `jobkit skills` matches every posting against it (TRUE / BANNED / GAP / UNKNOWN) and picks
+     the track base.
+   - `master/metrics-ledger.template.md` → `master/metrics-ledger.md`: one row per number on
+     your résumé, with how it was measured. No row, no number.
+   - `bases/`: once you approve a tailored résumé for a track, `python bin/jobkit.py base set
+     <security|software|ai> <application-folder>` stores it; later preps edit that base
+     instead of rewriting from the pool.
 5. **Sanity check:** `python bin/jobkit.py pool tex | head` should print your LaTeX with the
    note blocks stripped; `python bin/jobkit.py track audit` should print `0 problems`.
 
@@ -88,6 +118,7 @@ Google expires the refresh token every 7 days.
 | `/apply-job sweep [N]` | pulls the N freshest candidates from `job-matcher-feed/` and runs them through the normal flow |
 | `/apply-job setup` | first-run interview: builds `profile.md`, `content-pool.tex`, `form-data.md`, `qa-bank.md` from your existing résumé + answers |
 | `/apply-job scan` | reads your logged-in Handshake / Jobright / LinkedIn "recommended" pages and queues fits for `sweep` |
+| `/apply-job fixes` | reads the failure log the pipeline writes about itself (`jobkit fail add`) and turns open entries into skill edits, with your go-ahead per group |
 
 Plain-language updates work too: "Acme rejected me", "got an OA from Beta" update the tracker.
 
@@ -117,8 +148,11 @@ A naive version of this cost ~150k tokens per application. This one runs at ~25k
 
 - **`bin/jobkit.py` is the read layer.** The skill never reads the tracker, the content pool
   or the Q&A bank in full. Every read is a subcommand that returns a few lines: `dup`, `posted`,
-  `similar`, `pool tex|notes`, `qa list|get`, `pagefit`, `atscheck`, `schema`, `insights`,
-  `track …`, `sweep-…`.
+  `similar`, `pool tex|notes|entry`, `qa list|get`, `pagefit`, `atsfix`, `schema`, `insights`,
+  `track …`, `sweep-…`, `meta` (posting facts from the ATS's own API: Greenhouse, Ashby, Lever,
+  SmartRecruiters, Workday, Eightfold), `triage` (the eligibility rules as a script), `skills`
+  (posting vs. your inventory + the keyword-coverage gate + the track choice), `audit` (every
+  number on the page must exist in the pool), `base` (track bases), `fail` (the failure log).
 - **Prep is delegated.** One subagent per link tailors the résumé, runs the factual audit,
   compiles, checks page fit and the PDF text layer, drafts screener answers, and writes a
   single `form-pack.md`. Subagents run in parallel.
@@ -167,18 +201,28 @@ A naive version of this cost ~150k tokens per application. This one runs at ~25k
 skill/apply-job/          → copy to ~/.claude/skills/apply-job
   SKILL.md                 the always-loaded orchestrator (modes, hard rules, fill phase)
   references/tailoring.md  steps 1–8, run by the prep subagent
+  references/fill.md       step 9, the fill phase
   references/inbox.md      Gmail sweep
+  references/mail-harvest.md  job-alert emails → sweep queue
+  references/sweep.md      sweep mode · references/scan.md  scan mode · references/fixes.md  fixes mode
+  references/hybrid-swaps.md  entry swaps for postings that span two tracks
+  references/prep-brief.md the variable block sent to the prep agent
   references/insights.md   conversion analysis
   references/ats-quirks.md cross-platform failure modes
   references/setup.md      the first-run interview
   ats/*.md                 one playbook per ATS
   resume-style.md          voice and structural rules
   form-data.template.md    → form-data.md (your form-only facts)
+agents/apply-job-prep.md  → copy to ~/.claude/agents (the prep subagent: model, tools, rules)
 workspace/                → copy anywhere, point SKILL.md at it
   bin/jobkit.py            read layer + tools
+  bin/jobprep.py           meta / triage / skills / formpack / audit / base / fail (imported by jobkit)
   bin/jobtrack.py          tracker layer (imported by jobkit)
-  bin/gmail/               Gmail API reader
-  master/                  profile.template.md, content-pool.template.tex, resume.cls
+  bin/gmail/               Gmail API reader + mailjobs.py (job-alert harvest)
+  master/                  profile.template.md, content-pool.template.tex, resume.cls,
+                           skills-inventory.template.md, metrics-ledger.template.md
+  bases/                   one approved résumé per track (created by `jobkit base set`)
+  failures.md              the pipeline's own bug log (written by `jobkit fail add`)
   tracker.md               empty tracker with the header
   qa-bank.template.md      story-bank format
 docs/                     SETUP.md, INTERVIEW-PREP.md

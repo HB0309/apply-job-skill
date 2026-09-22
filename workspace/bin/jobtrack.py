@@ -41,6 +41,8 @@ EMPLOYER_CAPS = {
     "openai": (5, 182),
     "tiktok": (2, 182),
     "canonical": (4, 182),
+    "google": (3, 30),      # Google Careers, account-wide, rolling 30 days
+    "retell": (2, 60),      # stated only in the posting body
 }
 
 
