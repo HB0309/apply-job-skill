@@ -4,13 +4,30 @@
 Every subcommand exists to replace a large file read with a small stdout payload.
 Run with no arguments for usage.
 
-  dup <url> [--company C] [--role R]   one tracker row, or NONE
+  dup <url> [--company C] [--role R]   MATCH <row> (same URL) | FUZZY SAME_REQ <id> <row> (duplicate) |
+                                        FUZZY DIFFERENT_REQ <new> vs <old> <row> (not a duplicate) |
+                                        FUZZY UNKNOWN_REQ <new|?> vs <old|?> <row> (judge on location/team) |
+                                        NONE. FUZZY compares requisition ids parsed from both URLs
+                                        (Greenhouse, Lever, Ashby, Workday, SmartRecruiters, iCIMS, Oracle,
+                                        Taleo, UKG, Paylocity, Phenom, Eightfold, Dayforce, generic).
+  gate <url> --source S [--force] [--stale-ok]
+                                        G1 posted, G2 dup, G3 meta, G4 dup+company/role, G5 employer cap,
+                                        G6 triage in one call. First line: GATE PASS | folder= company= role=
+                                        location= platform= pay= apply= posted=<date> (<N> days,
+                                        <confidence>) employer= (then '  note:' / '  unsure:' /
+                                        '  dup:' lines), or GATE STOP G# STALE|DUPLICATE|CLOSED|AT_CAP|SKIP |
+                                        reason | details, or GATE NO_META | posted= | dup=NONE. The folder is
+                                        written only after G4/G5 pass. --force: triage SKIP (and a prior
+                                        skipped/held row) reported, not stopped. --stale-ok: the user said yes.
   count                                 non-skipped application count
   pool tex                              content-pool.tex minus the two note blocks
   pool notes [entry]                    just those note blocks (factual audit)
+  pool entry <name>                     one Experience/Project entry plus its alternate framings
   qa list                               the 23 story headings
   qa get <substr>                       one story body
   pagefit <pdf>                         page count + bottom whitespace + verdict
+  atsfix <pdf>                          rewrite ToUnicode maps so hyphens extract as ASCII '-'
+  atscheck <pdf>                        ATS text-layer check: non-ASCII hyphens and odd glyphs
   similar <job-posting.md> [--company C] best prior application to reuse
   schema <url>                          ATS application-form schema, compact
   posted <url>                          original posting date + age in days + verdict
@@ -19,9 +36,21 @@ Run with no arguments for usage.
   sweep-done <job_id>                   mark a swept candidate as processed
   sweep-prune [--days N]                move feed candidates older than N days (default 3) to processed/
   scan-add                              stdin: JSON array of manually-browsed jobs -> feed queue
-  track add|set|active|employer|audit   tracker writes and reads -- the ONLY way rows change
+  track add|set|active|employer|audit|migrate
+                                        tracker writes and reads -- the ONLY way rows change
+
+  From jobprep.py (the deterministic half of prep; see its docstring for detail):
+  meta <url> [--write]                  posting facts from the ATS job API; --write makes the folder
+  triage <folder|job-posting.md>        SKIP / PASS / UNSURE on the eligibility rules, regex only
+  formpack <folder> --company ...       writes the static part of form-pack.md
+  audit <tex>                           every number in the tailored resume must exist in pool/profile
+  salary "<pay line>"|none              desired-salary rows (free text, number, min/max) for a band
+  skills <folder|job-posting.md> [--pdf P] keyword coverage against master/skills-inventory.md
+  base use|set|list [track] [folder]    track base resumes (security, software, ai) in bases/
+  fail add|list|close [id]              the failure log (failures.md)
 """
 import argparse
+import contextlib
 import datetime
 import io
 import json
@@ -37,14 +66,13 @@ for _stream in (sys.stdout, sys.stderr):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TRACKER = os.path.join(ROOT, "tracker.md")
 POOL = os.path.join(ROOT, "master", "content-pool.tex")
 QABANK = os.path.join(ROOT, "qa-bank.md")
-APPS = os.path.join(ROOT, "applications")
 SWEEP_FEED = os.path.join(ROOT, "job-matcher-feed")
 
 import jobtrack
 COLS = jobtrack.COLS
+APPS = jobtrack.APPS            # JOBKIT_APPS_ROOT redirects it (tests); default ROOT/applications
 
 # Comment blocks stripped from `pool tex`. Matched against the block's title
 # line, never by line number -- the user edits this file and line numbers drift.
@@ -105,23 +133,174 @@ def norm_text(s):
     return re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).strip()
 
 
-def cmd_dup(args):
-    target = norm_url(args.url)
+# ------------------------------------------------------------ requisition ids
+# 13 logged dup failures (F-0048, F-0056, F-0088, F-0096, F-0131 ...) were FUZZY hits on a
+# different requisition at the same employer. A FUZZY hit is now checked against the req id
+# each URL carries. Job boards that re-list other employers' jobs carry THEIR id, not the
+# employer's, so they never produce an id (the verdict stays UNKNOWN_REQ).
+AGGREGATORS = ("jobright.ai", "linkedin.com", "indeed.com", "ziprecruiter.com", "dice.com",
+               "joinhandshake.com", "glassdoor.com", "google.com", "simplify.jobs", "builtin.com",
+               "hiring.cafe", "wellfound.com", "ycombinator.com", "welcometothejungle.com")
+_UUID = r"[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}"
+# (kind, host substring or "", regex). First hit wins. kind "host" means ids are only
+# comparable on the same host (Phenom, custom career sites, generic shapes).
+REQ_PATTERNS = (
+    ("greenhouse", "", r"[?&]gh_jid=(\d+)"),
+    ("greenhouse", "greenhouse.io", r"greenhouse\.io/(?!embed/)[^/?#]+/jobs/(\d+)"),
+    ("greenhouse", "greenhouse.io", r"[?&]token=(\d+)"),
+    ("lever", "lever.co", r"lever\.co/[^/?#]+/(" + _UUID + ")"),
+    ("ashby", "ashbyhq.com", r"ashbyhq\.com/[^/?#]+/(" + _UUID + ")"),
+    ("workday", "myworkdayjobs.com", r"/job/(?:[^/?#]+/)?[^/?#]*_([a-z0-9-]+)"),
+    ("smartrecruiters", "smartrecruiters.com", r"smartrecruiters\.com/[^/?#]+/(\d{6,})"),
+    ("icims", "icims.com", r"/jobs/(\d+)"),
+    ("oracle", "oraclecloud.com", r"/(?:job|preview)/(\d+)"),
+    ("taleo", "taleo.net", r"[?&]job=([a-z0-9]+)"),
+    ("ultipro", "", r"[?&]opportunityId=(" + _UUID + ")"),
+    ("paylocity", "paylocity.com", r"/Jobs/Details/(\d+)"),
+    ("dayforce", "dayforcehcm.com", r"/jobs/(\d+)"),
+    ("amazon", "amazon.jobs", r"/jobs/(\d+)"),
+    ("eightfold", "", r"/careers/job/(\d{6,})|/careers/job\?(?:[^#]*&)?pid=(\d+)|eightfold\.ai/.*[?&]pid=(\d+)"),
+    ("successfactors", "", r"[?&]career_job_req_id=(\d+)"),
+    ("host", "", r"[?&]jobSeqNo=([a-z0-9]+)"),                               # Phenom
+    ("host", "", r"/job/([a-z0-9]*\d[a-z0-9]*external[a-z0-9]*)"),           # Phenom seq in path
+    ("host", "", r"[?&](?:job_?id|jobopeningid|req_?id|requisition_?id|jobreqid)=([a-z0-9_-]+)"),
+    ("host", "", r"/jobs?/(\d{3,})(?=[/?#-]|$)"),                            # Phenom /job/<id>/, custom sites
+    ("host", "", r"/(?:j|jobs?)/([a-z0-9]{6,})(?=[/?#]|$)"),                 # Workable /j/<code>, Jobvite
+    ("host", "", r"(" + _UUID + ")"),
+)
+REQ_TOKEN = re.compile(r"(?<![a-z0-9])((?:jr|req|r)[-_]?\d{4,})", re.I)   # JR63439, R-113509, REQ_100
+
+
+def _norm_id(s):
+    s = re.sub(r"(?<=\d{4})[-_]\d{1,2}$", "", s or "")      # Workday/Paradox repost suffix: R171675-1
+    s = re.sub(r"[^A-Za-z0-9]", "", s).upper()
+    return (s.lstrip("0") or "0") if s.isdigit() else s
+
+
+def req_id(url):
+    """{"kind", "id", "ids"} for the requisition a job URL points at. `id` is the primary id (None when
+    nothing is extractable); `ids` adds req-like tokens (JR63439) and the long digit core of each id,
+    so the same req on a second ATS (Paradox job_id=JR63439_1 vs Workday ..._JR63439) still overlaps."""
+    u = (url or "").strip().rstrip(".,;)*>")
+    parsed = urllib.parse.urlparse(u if "://" in u else "https://" + u)
+    host = re.sub(r"^www\.", "", parsed.netloc.lower().split(":")[0])
+    if any(host == a or host.endswith("." + a) for a in AGGREGATORS):
+        return {"kind": "aggregator:" + host, "id": None, "ids": set()}
+    kind = rid = None
+    for k, hostpart, pat in REQ_PATTERNS:
+        if hostpart and hostpart not in host:
+            continue
+        m = re.search(pat, u, re.I)
+        if m:
+            rid = next(g for g in m.groups() if g)
+            kind = k if k != "host" else "host:" + host
+            break
+    if not rid:                                     # generic: longest digit run of 5+
+        runs = re.findall(r"\d{5,}", norm_url(u).partition("/")[2])
+        if runs:
+            rid, kind = max(runs, key=len), "host:" + host
+    ids = set()
+    for tok in ([rid] if rid else []) + REQ_TOKEN.findall(u):
+        n = _norm_id(tok)
+        ids.add(n)
+        runs = re.findall(r"\d{5,}", n)
+        if runs:
+            ids.add("#" + (max(runs, key=len).lstrip("0") or "0"))
+    return {"kind": kind, "id": _norm_id(rid) if rid else None, "ids": ids}
+
+
+def _row_urls(r):
+    """Every URL that identifies a tracker row's posting: the Link column plus the URL /
+    Apply URL lines of its folder's job-posting.md (read-only; live folder or JOBKIT_APPS_ROOT)."""
+    urls = re.findall(r"https?://[^\s|]+", r.get("link", ""))
+    folder = (r.get("folder") or "").strip().rstrip("/")
+    if folder and folder.lower() != "none":
+        for base in (os.path.join(APPS, os.path.basename(folder)), os.path.join(ROOT, folder)):
+            p = os.path.join(base, "job-posting.md")
+            if os.path.exists(p):
+                head = read(p).split("\n---\n", 1)[0]
+                for line in head.splitlines():
+                    if "url" in line.lower():
+                        urls += re.findall(r"https?://[^\s|)*>]+", line)
+                break
+    return urls
+
+
+def req_compare(new_url, old_urls):
+    """(verdict, new id, old id) with verdict SAME_REQ, DIFFERENT_REQ or UNKNOWN_REQ.
+    DIFFERENT_REQ needs an id of the SAME kind on both sides (two Oracle job ids, two Greenhouse
+    tokens); ids from different ATSes are not comparable, so those stay UNKNOWN_REQ."""
+    n = req_id(new_url)
+    olds = [req_id(u) for u in old_urls]
+    for o in olds:
+        shared = n["ids"] & o["ids"]
+        if shared:
+            return "SAME_REQ", n["id"] or sorted(shared)[0], o["id"] or sorted(shared)[0]
+    same_kind = [o for o in olds if o["id"] and o["kind"] == n["kind"]]
+    if n["id"] and same_kind:
+        return "DIFFERENT_REQ", n["id"], same_kind[0]["id"]
+    return "UNKNOWN_REQ", n["id"], next((o["id"] for o in olds if o["id"]), None)
+
+
+_CO_STOP = {"the", "company", "inc", "llc", "ltd", "corp", "corporation", "group", "holdings",
+            "technologies", "technology", "systems", "solutions", "services", "international",
+            "global", "usa", "america", "labs", "careers"}
+
+
+def _co_tokens(s):
+    return {t for t in norm_text(s).split() if len(t) >= 4 and t not in _CO_STOP}
+
+
+def dup_check(url, company="", role=""):
+    """The dup logic, structured: {"verdict": MATCH|FUZZY|NONE, "req": SAME_REQ|DIFFERENT_REQ|
+    UNKNOWN_REQ (FUZZY only), "row", "new_id", "old_id", "more"}."""
+    target = norm_url(url)
     rows = tracker_rows()
     for r in rows:
         for u in re.findall(r"https?://\S+", r["link"]):
             if norm_url(u) == target:
-                print(fmt_row(r))
-                return 0
-    if args.company:
-        co, role = norm_text(args.company), norm_text(args.role)
+                return {"verdict": "MATCH", "row": r}
+    if not company:
+        return {"verdict": "NONE"}
+    co, role_n = norm_text(company), norm_text(role)
+    hits = []
+    for r in rows:
+        if norm_text(r["company"]) != co:
+            continue
+        if not role_n or role_n in norm_text(r["role"]) or norm_text(r["role"]) in role_n:
+            hits.append((r,) + req_compare(url, _row_urls(r)))
+    # Same requisition under a looser employer name ("The William Carter Company" vs "Carter's",
+    # F-0096): only an id overlap counts here, never the title.
+    if req_id(url)["ids"]:
+        toks = _co_tokens(company)
         for r in rows:
-            if norm_text(r["company"]) != co:
-                continue
-            if not role or role in norm_text(r["role"]) or norm_text(r["role"]) in role:
-                print("FUZZY " + fmt_row(r))
-                return 0
-    print("NONE")
+            if toks & _co_tokens(r["company"]) and norm_text(r["company"]) != co:
+                v = req_compare(url, _row_urls(r))
+                if v[0] == "SAME_REQ":
+                    hits.append((r,) + v)
+    if not hits:
+        return {"verdict": "NONE"}
+    rank = {"SAME_REQ": 0, "UNKNOWN_REQ": 1, "DIFFERENT_REQ": 2}
+    hits.sort(key=lambda h: rank[h[1]])
+    r, verdict, new_id, old_id = hits[0]
+    return {"verdict": "FUZZY", "req": verdict, "row": r, "new_id": new_id, "old_id": old_id,
+            "more": len(hits) - 1}
+
+
+def fmt_dup(res):
+    if res["verdict"] == "MATCH":
+        return fmt_row(res["row"])
+    if res["verdict"] == "NONE":
+        return "NONE"
+    ids = {"SAME_REQ": "{new_id}", "DIFFERENT_REQ": "{new_id} vs {old_id}",
+           "UNKNOWN_REQ": "{new_id} vs {old_id}"}[res["req"]].format(
+        new_id=res["new_id"] or "?", old_id=res["old_id"] or "?")
+    more = " | +{} more same-employer row(s)".format(res["more"]) if res["more"] else ""
+    return "FUZZY {} {} | {}{}".format(res["req"], ids, fmt_row(res["row"])[len("MATCH | "):], more)
+
+
+def cmd_dup(args):
+    print(fmt_dup(dup_check(args.url, args.company, args.role)))
     return 0
 
 
@@ -480,8 +659,8 @@ def cmd_similar(args):
     print("best={:.2f} | {} | {} | applications/{}".format(score, company, role[:60], folder))
 
     path = os.path.join(APPS, folder)
-    tex = os.path.join(path, "Resume.tex")
-    pdf = os.path.join(path, "Resume.pdf")
+    tex = os.path.join(path, "Resume_Resume.tex")
+    pdf = os.path.join(path, "Resume_Resume.pdf")
     reasons = []
     if score < args.threshold:
         reasons.append("score {:.2f} < {:.2f}".format(score, args.threshold))
@@ -491,6 +670,13 @@ def cmd_similar(args):
         reasons.append("prior tex/pdf missing")
     elif os.path.getmtime(tex) < os.path.getmtime(POOL):
         reasons.append("STALE: content-pool.tex edited after that resume was built")
+    else:
+        # A base change (layout, titles) also retires older resumes, not just a pool edit.
+        bases = [os.path.join(ROOT, "bases", f) for f in os.listdir(os.path.join(ROOT, "bases"))
+                 if f.endswith(".tex")]
+        newest = max((os.path.getmtime(b) for b in bases), default=0)
+        if os.path.getmtime(tex) < newest:
+            reasons.append("STALE: a base resume was edited after that resume was built")
     if args.role and row and is_entry(args.role) != is_entry(role):
         reasons.append("different seniority tier")
 
@@ -621,6 +807,123 @@ def cmd_posted(args):
     print("{} date={} age={}d confidence={}".format(
         "STALE" if age > STALE_DAYS else "FRESH", date, age,
         d.get("confidence") or "unknown"))
+    return 0
+
+
+# ------------------------------------------------------------------------ gate
+
+def _capture(fn, **kw):
+    """Run an existing subcommand in-process; return (rc, stdout text, namespace)."""
+    ns = argparse.Namespace(**kw)
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = fn(ns)
+    return rc, buf.getvalue().strip(), ns
+
+
+def cmd_gate(args):
+    """G1-G6 in one call, one compact verdict. Each gate is the existing subcommand, run
+    in-process; this function only sequences them and condenses the output."""
+    import jobprep
+    url, lines = args.url, []
+
+    def row_bits(r):
+        return "{date} | {company} | {role} | status: {status} | {folder}".format(**r)
+
+    # G1 posting date
+    _, out, _ = _capture(cmd_posted, url=url, timeout=args.timeout)
+    m = re.match(r"(FRESH|STALE|UNKNOWN) date=(\S+)(?: age=(-?\d+)d confidence=(\S+))?", out)
+    kind, date, age, conf = (m.groups() if m else ("UNKNOWN", "unknown", None, None))
+    if kind == "STALE" and not args.stale_ok:
+        print("GATE STOP G1 STALE | posted {} ({} days ago, confidence {}), older than {} days"
+              " | ask the user; on yes rerun with --stale-ok".format(date, age, conf, STALE_DAYS))
+        return 0
+    if kind == "STALE":
+        lines.append("  note: posted {} days ago, the user approved (--stale-ok)".format(age))
+    posted_meta = "{} ({} days ago)".format(date, age) if age is not None else "unknown"
+    posted = ("{} ({} days{})".format(date, age, ", " + conf if conf else "")
+              if age is not None else "unknown")
+
+    # G2 duplicate by URL
+    def url_dup(u, gate):
+        res = dup_check(u)
+        if res["verdict"] != "MATCH":
+            return False
+        if args.force and res["row"]["status"] in ("skipped", "held"):
+            lines.append("  dup: PRIOR_{} row for this URL, continuing on --force | {}".format(
+                res["row"]["status"].upper(), row_bits(res["row"])))
+            return False
+        print("GATE STOP {} DUPLICATE | this URL is already in the tracker | {}".format(
+            gate, row_bits(res["row"])))
+        return True
+    if url_dup(url, "G2"):
+        return 0
+
+    # G3 posting facts (fetched now, written after G4/G5 so a stop leaves no orphan folder)
+    rc, out, ns = _capture(jobprep.cmd_meta, url=url, write=False, posted=posted_meta,
+                           source=args.source)
+    if rc == 4:
+        print("GATE STOP G3 CLOSED | {} | open the link once to confirm; if gone, log skipped "
+              "--notes \"posting closed\"".format(out.split(" -- ")[0]))
+        return 0
+    if rc != 0 or not getattr(ns, "result", None):
+        print("GATE NO_META | posted={} | dup=NONE".format(posted))
+        print("  meta: " + (out.splitlines() or ["no output"])[-1][:160])
+        return 0
+    meta = ns.result
+    who = "company={} | role={}".format(meta["company"], meta["role"])
+
+    # G4 duplicate by company + role (plus the canonical / apply URLs meta resolved)
+    for u in dict.fromkeys((meta["url"], meta["apply_url"])):
+        if norm_url(u) != norm_url(url) and url_dup(u, "G4"):
+            return 0
+    res = dup_check(url, meta["company"], meta["role"])     # a MATCH here was settled at G2
+    if res["verdict"] == "FUZZY":
+        if res["req"] == "SAME_REQ" and args.force and res["row"]["status"] in ("skipped", "held"):
+            lines.append("  dup: PRIOR_{} row for this req, continuing on --force | {}".format(
+                res["row"]["status"].upper(), row_bits(res["row"])))
+        elif res["req"] == "SAME_REQ":
+            print("GATE STOP G4 DUPLICATE | {} | {} | not written: folder=none".format(
+                fmt_dup(res), who))
+            return 0
+        else:
+            lines.append("  dup: {} | new posting location={}".format(
+                fmt_dup(res), meta["location"] or "not stated"))
+
+    # G5 employer caps
+    _, emp, _ = _capture(jobtrack.cmd_track_employer, company=meta["company"], days=30)
+    emp_short = emp.split(": ", 1)[-1]
+    if "AT CAP" in emp:
+        print("GATE STOP G5 AT_CAP | {} | {} | log held --notes \"cap\", tell the user".format(
+            emp_short, who))
+        return 0
+
+    # G6 triage, on the folder written now
+    path = jobprep.write_posting(meta["_j"], meta["_band"], meta["folder"], meta["url"],
+                                 posted_meta, args.source)
+    folder = ("applications/" + meta["folder"] if os.path.normcase(APPS) == os.path.normcase(
+        os.path.join(ROOT, "applications")) else path)
+    _, tri, _ = _capture(jobprep.cmd_triage, target=path)
+    tri_lines = tri.splitlines() or ["UNSURE triage printed nothing"]
+    head, rest = tri_lines[0], tri_lines[1:]
+    also = [l.strip()[len("also: "):] for l in rest if l.strip().startswith("also: ")]
+    notes = [l.strip()[len("note: "):] for l in rest if l.strip().startswith("note: ")]
+    flags = [l.strip() for l in rest if not l.strip().startswith(("also: ", "note: "))]
+    if head.startswith("SKIP"):
+        if not args.force:
+            print("GATE STOP G6 SKIP | {} | {} | folder={}{}".format(
+                head[5:], who, folder, "".join(" | also: " + a for a in also)))
+            return 0
+        lines += ["  skip(forced): " + s for s in [head[5:]] + also]
+    lines += ["  unsure: " + f for f in flags]
+    lines += ["  note: " + n for n in notes]
+
+    print("GATE PASS | folder={} | company={} | role={} | location={} | platform={} | pay={} | "
+          "apply={} | posted={} | employer={}".format(
+              folder, meta["company"], meta["role"], meta["location"] or "not stated",
+              meta["platform"], meta["pay"], meta["apply_url"], posted, emp_short))
+    for l in lines:
+        print(l)
     return 0
 
 
@@ -832,6 +1135,8 @@ def cmd_insights(args):
     print("{} applications sent | {} with a known outcome".format(total, outcomes))
     table("role type", by_role)
     table("source", tally(lambda r: r["source"] or "direct"))
+    table("resume variant", tally(
+        lambda r: (re.search(r"rv=(\w+)", r.get("notes") or "") or [None, "v1"])[1]))
     if outcomes < 15:
         print("\nSAMPLE TOO THIN ({} known outcomes). Report tentative observations only; "
               "do not claim patterns.".format(outcomes))
@@ -874,6 +1179,14 @@ def main():
     po = sub.add_parser("posted"); po.add_argument("url")
     po.add_argument("--timeout", type=float, default=120.0); po.set_defaults(fn=cmd_posted)
 
+    ga = sub.add_parser("gate", help="G1-G6 in one call: one GATE PASS / STOP / NO_META verdict")
+    ga.add_argument("url"); ga.add_argument("--source", default="")
+    ga.add_argument("--force", action="store_true",
+                    help="the user overrode: triage SKIP (and a prior skipped/held row for this URL) do not stop")
+    ga.add_argument("--stale-ok", action="store_true", help="the user said yes to a STALE posting")
+    ga.add_argument("--timeout", type=float, default=120.0, help="posting-date lookup timeout")
+    ga.set_defaults(fn=cmd_gate)
+
     sub.add_parser("insights").set_defaults(fn=cmd_insights)
 
     sl = sub.add_parser("sweep-list"); sl.add_argument("--limit", type=int, default=0)
@@ -904,6 +1217,9 @@ def main():
     fp.set_defaults(fn=jobprep.cmd_formpack)
 
     au = sub.add_parser("audit"); au.add_argument("tex"); au.set_defaults(fn=jobprep.cmd_audit)
+
+    sa = sub.add_parser("salary", help="desired-salary answer for a posted band, e.g. \"$150,000-$220,000\" or none")
+    sa.add_argument("pay"); sa.set_defaults(fn=jobprep.cmd_salary)
 
     sk = sub.add_parser("skills"); sk.add_argument("target", help="application folder or job-posting.md")
     sk.add_argument("--pdf", default="", help="tailored resume PDF: adds the keyword-coverage gate line")

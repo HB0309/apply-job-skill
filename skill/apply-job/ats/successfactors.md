@@ -11,14 +11,14 @@ Jobs of Interest · Job-Specific Information. Buttons at the bottom: **View Prof
 `Apply` is the submit — never click it.
 
 ## Walls
-- Account/login wall before the form. Hand off to the user.
+- Account/login wall before the form: return `BLOCKED` ("login wall").
 - The extension needs site permission for `career2.successfactors.eu` separately from the
   `careers.<company>.com` wrapper. If JS/screenshots return "Permission denied for this domain",
-  ask the user to grant it.
+  return `BLOCKED` ("Chrome extension needs site permission for career2.successfactors.eu").
 
 ## Traps (all observed, all cost a full refill when ignored)
 1. **Résumé upload re-parses and WIPES address/city/zip/state.** Upload the résumé FIRST, then
-   fill the address block. The parse populates work experience and education, but per SKILL.md rule 9b every
+   fill the address block. The parse populates work experience and education, but per fill.md 9b every
    entry is still entered/overwritten by hand from `form-pack.md` in PDF order, and every
    description re-read in full after the last Save.
 2. **`Save` silently blanks every free-text description field** — "Most important duties and
@@ -48,4 +48,5 @@ nowhere to go on this form. Say so in the handoff rather than implying they were
 
 ## Warning banner
 "Applying will change your preferences" — submitting flips the candidate profile to be visible to
-recruiters outside the applicant's own country. Surface it to the user before they click Apply.
+recruiters outside the applicant's own country. Put it on the handoff's `Flags:` line so the user
+sees it before they click Apply.

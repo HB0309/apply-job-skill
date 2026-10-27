@@ -18,8 +18,8 @@ Resume filling once they say they're in.
 5. Self Identify (disability form)
 6. Review → Submit
 
-Re-enumerate fields on every page. **Before every Next / Save and Continue: one full read-back
-of every field on the page against form-pack (SKILL.md 9.2 step 6), fix, re-read, then click.**
+Re-enumerate fields on every page. **Before every Next / Save and Continue: `__rbCheck` every
+field on the page against form-pack (fill.md 9.2 step 6), fix, re-check, then click.**
 After the click, confirm the new page is the expected step and not a validation bounce.
 
 ## Quirks — these bite every time
@@ -61,7 +61,7 @@ After the click, confirm the new page is the expected step and not a validation 
   Applied Materials' Voluntary Disclosures page (2026-09-03): every field valid, Save returns two
   VPS errors with a *new* uuid each attempt. Retrying does not help. Verify the fields still hold,
   then hand the browser to the user to finish the remaining pages rather than hammering Save.
-- **My Experience page: SKILL.md rule 9b in full — enter every Work Experience and Education
+- **My Experience page: fill.md 9b in full — enter every Work Experience and Education
   block by hand from `form-pack.md`.** "Autofill with Resume" and "Use My Last Application"
   both pre-populate these blocks and both have shipped wrong: AT&T (4 blocks for 3 jobs),
   Baker Hughes (titles/companies swapped), HPE (fabricated GPA), a Workday employer

@@ -12,8 +12,8 @@ req 10414316 (2026-08-10).
   instead — different playbook.
 
 ## Login
-Login-walled. the user's session is normally live; if not, hand them the browser. Never create an
-account.
+Login-walled. the user's session is normally live; if not, return `BLOCKED` ("login wall"). Never
+create an account.
 
 ## Page sequence (tabs in "My progress")
 Contact information · General questions · Education · Job-specific questions · Work Eligibility ·
@@ -64,7 +64,8 @@ committing. Tried and failed on 2026-09-12: native setter + events, `triple_clic
   signature date of **2024-11-15**; it is account-level, so it appears on every application.
 - If a date edit has already corrupted the widget, **reload the page** — the reload discards the
   bad value and restores the committed one (see below).
-- Only a human typing into the picker seems to work; hand it to the user if the date genuinely matters.
+- Only a human typing into the picker seems to work; if the date genuinely matters, list it under
+  `Unanswered` for the user.
 
 ## ⚠ Reload semantics and the "review incomplete" trap
 
@@ -132,7 +133,7 @@ The carried-over profile had been wrong for a while. Verify these on the review 
 - Anchor on a unique string like the email address: the sidebar nav also begins with
   "Contact information" and will match a naive search first.
 - The résumé block shows filename + upload time — **check the timestamp**, not the filename, since
-  every tailored résumé is called `Resume.pdf`.
+  the upload name (`Resume_<role>.pdf`) repeats across applications.
 - One `Submit application` button. **Never click it.**
 
 ## Post-submit

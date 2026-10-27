@@ -36,27 +36,42 @@ None of it needs judgement, so none of it should cost a model call.
       Every number in the tailored resume must exist in the pool or profile
       (FAIL otherwise); every tech-looking token that does not is a WARN the
       prep model must justify in the match report.
+
+  salary "<pay line>" | none
+      Desired-salary rows (free text, single number, min/max pair) anchored to
+      the posted band. Accepts "$a-$b", "USD a - b", "a - b USD per year", a
+      single figure ("$130K") and hourly rates. No band -> your own range.
+
+  base use|set|list [track] [folder]
+      Track base resumes (security, software, ai) under bases/.
+
+  fail add|list|close [id]
+      The failure log, failures.md.
 """
 import datetime
 import html
 import io
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
+import unicodedata
 import sys
 import urllib.parse
 import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APPS = os.path.join(ROOT, "applications")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jobtrack import APPS       # honours JOBKIT_APPS_ROOT (tests); defaults to ROOT/applications
 POOL = os.path.join(ROOT, "master", "content-pool.tex")
 PROFILE = os.path.join(ROOT, "master", "profile.md")
 SKILL_DIR = os.environ.get("APPLY_JOB_SKILL_DIR") or os.path.join(
     os.path.expanduser("~"), ".claude", "skills", "apply-job")
 FORM_DATA = os.path.join(SKILL_DIR, "form-data.md")
-RESUME_TEX = "Resume.tex"
-RESUME_PDF = "Resume.pdf"
+RESUME_TEX = "Resume_Resume.tex"
+RESUME_PDF = "Resume_Resume.pdf"
 
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) jobkit/1.0",
            "Accept": "application/json"}
@@ -103,7 +118,7 @@ def html_to_text(s):
 
 PAY_RE = re.compile(
     r"\$\s?(\d{2,3}(?:,\d{3})(?:\.\d+)?|\d{2,3}(?:\.\d+)?\s?[Kk])\s*(?:USD)?\s*"
-    r"(?:-|–|—|to|and)\s*\$?\s?(\d{2,3}(?:,\d{3})(?:\.\d+)?|\d{2,3}(?:\.\d+)?\s?[Kk])")
+    r"(?:-|–|—|(?i:to|and))\s*\$?\s?(\d{2,3}(?:,\d{3})(?:\.\d+)?|\d{2,3}(?:\.\d+)?\s?[Kk])")
 
 
 def _money(tok):
@@ -117,30 +132,108 @@ HOURLY_RE = re.compile(r"\$\s?(\d{2,3}(?:\.\d{1,2})?)\s*(?:(?:-|–|—|to)\s*\$
                        r"(?:/|per|an|a)\s*(?:hr|hour)\b", re.I)
 
 
-def pay_from_text(text):
-    """(lo, hi) of the widest annual-looking band in the text, else None. An hourly rate is
-    annualised at 2,080 hours only when no annual band is present."""
+# Line-only shapes (a "Pay range published" line or a `salary` argument, never a posting body):
+# a band without "$" ("USD 130,000 - 160,000", "130,000 - 160,000 USD per year") and a single
+# figure ("$130,000", "$130K", "130,000 USD"). Both still need a salary context on the line.
+_AMT = r"(\d{2,3}(?:,\d{3})(?:\.\d+)?|\d{2,3}(?:\.\d+)?\s?[Kk])"
+PAY_BARE_RE = re.compile(r"(?<![\d,.$])" + _AMT + r"\s*(?:USD)?\s*(?:-|–|—|(?i:to))\s*\$?\s?" + _AMT + r"(?![\d,])")
+PAY_ONE_RE = re.compile(r"(?:\$\s?|(?<![\d,.]))" + _AMT + r"(?![\d,])")
+PAY_CONTEXT = re.compile(r"\$|\bUSD\b|salary|compensation|base pay|per (year|annum)|/\s?(yr|year)\b|annual|"
+                         r"\d\s?[Kk]\b", re.I)
+
+
+def _widest(pairs):
     best = None
-    for m in PAY_RE.finditer(text or ""):
-        try:
-            lo, hi = _money(m.group(1)), _money(m.group(2))
-        except ValueError:
-            continue
+    for lo, hi in pairs:
         if lo < 20000 or hi < lo:          # hourly rates and junk
             continue
         if best is None or hi > best[1]:
             best = (lo, hi)
+    return best
+
+
+def _pairs(regex, text, single=False):
+    for m in regex.finditer(text or ""):
+        if re.match(r"40[13]\s?[Kk]$", m.group(1)):     # a 401k plan, not a salary
+            continue
+        try:
+            lo = _money(m.group(1))
+            hi = lo if single else _money(m.group(2))
+        except ValueError:
+            continue
+        yield lo, hi
+
+
+def pay_from_text(text, line=False):
+    """(lo, hi) of the widest annual-looking band in the text, else None. An hourly rate is
+    annualised at 2,080 hours only when no annual band is present. line=True (a pay line, not a
+    posting body) also accepts a $-less band and a single figure (x -> (x, x)) when the line
+    carries a salary context."""
+    best = _widest(_pairs(PAY_RE, text))
+    if best is None and line and PAY_CONTEXT.search(text or ""):
+        best = _widest(_pairs(PAY_BARE_RE, text))
     if best is None:
         for m in HOURLY_RE.finditer(text or ""):
             lo = float(m.group(1))
             hi = float(m.group(2)) if m.group(2) else lo
             if 10 <= lo <= hi <= 400 and (best is None or hi * 2080 > best[1]):
                 best = (int(lo * 2080), int(hi * 2080))
+    if best is None and line and PAY_CONTEXT.search(text or ""):
+        # One figure -> (x, x). Two or more figures the band shapes missed ("$121,992/year to
+        # $181,000/year", "USD $86,000.00/Yr. – USD $110,575.00/Yr.") -> (lowest, highest).
+        amts = [lo for lo, _ in _pairs(PAY_ONE_RE, text, single=True) if lo >= 20000]
+        best = (min(amts), max(amts)) if amts else None
     return best
 
 
 def fmt_pay(band):
     return "${:,}-${:,}".format(*band) if band else "none"
+
+
+SAL_LO, SAL_HI = 100000, 130000     # SET YOUR OWN range, used as-is when no band is posted
+
+
+def _round5k(x):
+    return int(math.floor(x / 5000.0 + 0.5)) * 5000
+
+
+def salary_answer(band):
+    """Desired-salary answer for one posting (the user, 2026-09-28): always anchored to the posted
+    band. Min above SAL_LO -> min + 7% rounded to $5k, never above their max. Max under SAL_HI (min
+    at or under the floor) -> their max. Band containing your range, or no band -> your own range.
+    Returns number, (min, max) pair, free text, and the rule that fired."""
+    if band:
+        lo, hi = band
+        if lo > SAL_LO:
+            t = min(hi, _round5k(lo * 1.07))
+            rule = "posted min above your floor: min + 7%, rounded to $5k, capped at their max"
+        elif hi < SAL_HI:
+            t = hi
+            rule = "posted max under your ceiling: their max"
+        else:
+            band = None
+    if not band:
+        return {"number": (SAL_LO + SAL_HI) // 2, "pair": (SAL_LO, SAL_HI), "text": "Targeting ${}k–{}k".format(SAL_LO // 1000, SAL_HI // 1000),
+                "rule": "no band posted, or the band contains your range: your own range"}
+    return {"number": t, "pair": (t, min(hi, _round5k(t * 1.15))), "text": "Targeting ${:,}".format(t),
+            "rule": rule}
+
+
+def salary_rows(pay_text):
+    band = pay_from_text(pay_text, line=True) if pay_text and pay_text != "none" else None
+    s = salary_answer(band)
+    rows = ["| Salary expectation, free text | `{}` ({}; posted {}) |".format(s["text"], s["rule"], fmt_pay(band)),
+            "| Desired salary, single number field | `{}` |".format(s["number"]),
+            "| Desired salary, min / max pair | `{}` / `{}` |".format(*s["pair"])]
+    if band and not PAY_RE.search(pay_text) and HOURLY_RE.search(pay_text):
+        rows.append("| Desired pay, hourly field (posting is hourly) | `{:.2f}` per hour |".format(s["number"] / 2080))
+    return rows
+
+
+def cmd_salary(args):
+    for row in salary_rows(args.pay):
+        print(row)
+    return 0
 
 
 # ------------------------------------------------------------------------ meta
@@ -203,6 +296,12 @@ def _lever(url):
     parts.append(d.get("additionalPlain", ""))
     sr = d.get("salaryRange") or {}
     band = (int(sr["min"]), int(sr["max"])) if sr.get("min") and sr.get("max") else None
+    # salaryRange carries its own currency: FiscalNote's INR 650,000-750,000 (Gurugram role) was read
+    # as USD (2026-09-29). Only a USD (or unstated) band counts; an hourly one is annualised.
+    if band and (sr.get("currency") or "USD").upper() != "USD":
+        band = None
+    elif band and "hour" in (sr.get("interval") or ""):
+        band = (int(band[0] * 2080), int(band[1] * 2080))
     return {"company": org.replace("-", " ").title(), "role": d.get("text", ""),
             "location": (d.get("categories") or {}).get("location", ""), "platform": "lever",
             "body": "\n\n".join(p for p in parts if p), "pay": band,
@@ -313,6 +412,28 @@ def canonical_url(url):
     return url
 
 
+def write_posting(j, band, folder, url, posted="", source=""):
+    """applications/<folder>/job-posting.md from a fetcher result (meta --write, jobkit gate)."""
+    path = os.path.join(APPS, folder)
+    os.makedirs(path, exist_ok=True)
+    lines = ["**Posted:** {}".format(posted or "unknown"), "",
+             "# {} — {}".format(j["role"], j["company"]), "",
+             "- **URL:** " + url,
+             "- **Apply URL:** " + j["apply_url"],
+             "- **Company:** " + j["company"],
+             "- **Role:** " + j["role"],
+             "- **Location:** " + (j["location"] or "not stated"),
+             "- **Platform:** " + j["platform"],
+             "- **Pay range published:** " + (fmt_pay(band) if band else "none")
+             + (" ({})".format(j["pay_note"]) if j.get("pay_note") else ""),
+             "- **Referral source to use:** " + (source or "unknown"),
+             "- **Fetched by:** jobkit meta ({} API), verbatim body below".format(j["platform"]),
+             "", "---", "", j["body"], ""]
+    with io.open(os.path.join(path, "job-posting.md"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return path
+
+
 def cmd_meta(args):
     given = args.url
     args.url = canonical_url(args.url)
@@ -341,23 +462,12 @@ def cmd_meta(args):
     band = j.get("pay") or pay_from_text(j["body"])
     folder = folder_for(j["company"], j["role"], args.url, j.get("jobid", ""))
     if args.write:
-        path = os.path.join(APPS, folder)
-        os.makedirs(path, exist_ok=True)
-        lines = ["**Posted:** {}".format(args.posted or "unknown"), "",
-                 "# {} — {}".format(j["role"], j["company"]), "",
-                 "- **URL:** " + args.url,
-                 "- **Apply URL:** " + j["apply_url"],
-                 "- **Company:** " + j["company"],
-                 "- **Role:** " + j["role"],
-                 "- **Location:** " + (j["location"] or "not stated"),
-                 "- **Platform:** " + j["platform"],
-                 "- **Pay range published:** " + (fmt_pay(band) if band else "none")
-                 + (" ({})".format(j["pay_note"]) if j.get("pay_note") else ""),
-                 "- **Referral source to use:** " + (args.source or "unknown"),
-                 "- **Fetched by:** jobkit meta ({} API), verbatim body below".format(j["platform"]),
-                 "", "---", "", j["body"], ""]
-        with io.open(os.path.join(path, "job-posting.md"), "w", encoding="utf-8") as fh:
-            fh.write("\n".join(lines))
+        write_posting(j, band, folder, args.url, args.posted, args.source)
+    # Structured copy for `jobkit gate`, which calls this in-process (without --write, then
+    # write_posting() once the duplicate and cap gates pass, so a stop leaves no orphan folder).
+    args.result = {"company": j["company"], "role": j["role"], "location": j["location"],
+                   "platform": j["platform"], "pay": fmt_pay(band), "apply_url": j["apply_url"],
+                   "url": args.url, "folder": folder, "_j": j, "_band": band}
     print("{} | {} | {} | {} | pay={} | {} | {}".format(
         j["company"], j["role"], j["location"] or "?", j["platform"], fmt_pay(band),
         j["apply_url"], "applications/" + folder))
@@ -416,8 +526,15 @@ TITLE_STAFF_OK = re.compile(r"member of (the )?technical staff|chief of staff|st
 TITLE_UNSURE = re.compile(r"\b(senior|sr\.?|lead|manager|architect|intern|internship|co-?op|iii|iv)\b", re.I)
 NUMWORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8,
             "nine": 9, "ten": 10, "twelve": 12, "fifteen": 15}
-YOE = re.compile(r"(\d{1,2}|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\b)\s*\+?\s*"
-                 r"(?:-|–|to)?\s*(?:\d{1,2}\s*)?\+?\s*years?", re.I)
+_NUMWORD = r"\b(?:one|two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen)\b"
+# The upper bound of a range may be a word too: "one to three years" must match at "one" (the
+# lower bound), not fall through to "three years" (Exiger, 2026-09-22 holdout).
+# (?<!\d) / (?!\d): "100+ years of collective experience" must not match "10" inside "100" (Midpoint Markets 2026-09-29).
+YOE = re.compile(r"(?<!\d)(\d{1,2}(?!\d)|" + _NUMWORD + r")\s*\+?\s*"
+                 r"(?:-|–|to)?\s*(?:(?:\d{1,2}|" + _NUMWORD + r")\s*)?\+?\s*years?", re.I)
+# "You don't need 10 years of experience", "no need for 5+ years": the figure is waived, not asked.
+YOE_NEG = re.compile(r"(\b(don['’]?t|do not|doesn['’]?t|does not|won['’]?t|will not|needn['’]?t)\s+(need|require|have to have)"
+                     r"|\bno need (for|to have)|\bnot required to have)\s+(\w+\s+){0,2}$", re.I)
 
 
 def yoe_value(match):
@@ -443,17 +560,47 @@ RESIDE = re.compile(r"must (currently )?(reside|live|be located|be based)\b|loca
 US_WIDE = re.compile(r"\b(united states|u\.s\.a?\.?|usa|us\b|within the us|in the us|north america)", re.I)
 ITAR = re.compile(r"\bITAR\b[^.\n]{0,40}(requirement|restrict|compliance|regulat)|"
                   r"(requirement|restrict|subject to|comply with)[^.\n]{0,40}\bITAR\b|\bU\.?S\.? persons?\b", re.I)
-YOE_HISTORY = re.compile(r"history|founded|for over|spans|anniversary|year-old|years old|in business|"
+YOE_HISTORY = re.compile(r"history|founded|collective|combined experience|for over|spans|anniversary|year-old|years old|in business|"
                          r"\b(we|our|the company) (have|has) (spent|been) (more than |over )?\w+ years|"
                          r"years (of )?(driving|serving|leading|innovating|delivering|helping) |celebrat\w* \d+ years|"
-                         r"\d+ years (in|of) (the )?(industry|business|financial services|market)", re.I)
+                         r"\d+ years (in|of) (the )?(industry|business|financial services|market)|"
+                         # company age in the employer's voice: "With over 50 years of experience, we ..."
+                         r"\bwith (over|more than|nearly|almost) \w+\+? years of (experience|expertise)\W{0,3}(we|our)\b", re.I)
 YOE_SOFT = re.compile(r"prefer|nice to have|bonus|a plus|ideally|desired|or equivalent|masters?|m\.s\.|advanced degree", re.I)
 GOV = re.compile(r"\b(state of|county|city of|department of|federal|commonwealth of|"
                  r"public (agency|school|utility)|authority|\.gov\b)", re.I)
 GOV_CONTRACTOR = re.compile(r"national security|federal (agenc|government|contract|client|customer|civilian)|"
                             r"government contract|\bDoD\b|\bDHS\b|department of defense|homeland security|"
                             r"intelligence community|public sector (client|customer)|\bGSA\b", re.I)
+# Hedged contractor wording ("This role may involve work on federal government contracts",
+# About Healthcare 2026-09-24): a flag for the agent, never the low-pay + government skip.
+GOV_CONTRACTOR_SOFT = re.compile(r"\b(may|might|could)\s+(also\s+)?(involve|support|include)\b|"
+                                 r"\bsome work (on|for|with)\b|\boccasional(ly)?\b", re.I)
+# "degree ... and/or 4 years equivalent work experience" or "4 years of experience in lieu of a
+# degree" is a substitute for the degree, not an experience bar (Hensel Phelps 2026-09-08).
+YOE_DEGREE_SUB_PRE = re.compile(r"\bdegree\b[^.\n]{0,200}\b(and/or|or)\s+(\w+\s+){0,3}$", re.I)
+YOE_DEGREE_SUB_POST = re.compile(r"^\s*(of\s+)?(equivalent|comparable)\b", re.I)
+YOE_IN_LIEU = re.compile(r"^\s*(of\s+)?(\w+\s+){0,3}experience\s+in lieu of\s+(a\s+|an\s+)?(\w+\s+)?degree", re.I)
+EVERIFY = re.compile(r"e-?verify", re.I)
 FLOOR = 120000
+
+
+def gov_contract_hit(body):
+    """(kind, excerpt) for the first contractor mention: "hard" if any mention is stated flatly,
+    "soft" if every mention is hedged by GOV_CONTRACTOR_SOFT in its own sentence; None if none."""
+    first_soft = None
+    for m in GOV_CONTRACTOR.finditer(body):
+        # Standard E-Verify participation notices name DHS ("www.DHS.gov/E-Verify"); that is
+        # employment-eligibility boilerplate, not government / contractor work.
+        if EVERIFY.search(body[max(0, m.start() - 250):m.end() + 250]):
+            continue
+        start =max(body.rfind(".", 0, m.start()), body.rfind("\n", 0, m.start()), m.start() - 120) + 1
+        excerpt = body[max(0, m.start() - 80):m.end() + 120].replace("\n", " ")
+        if GOV_CONTRACTOR_SOFT.search(body[start:m.start()]):
+            first_soft = first_soft or excerpt
+        else:
+            return "hard", excerpt
+    return ("soft", first_soft) if first_soft else None
 
 
 def _field(text, name):
@@ -490,7 +637,7 @@ def cmd_triage(args):
     next_year = datetime.date.today().year + 1
     years_in_title = [int(y) for y in re.findall(r"\b(20\d\d)\b", role)]
     if GRAD_CLASS_TITLE.search(role) and any(y >= next_year for y in years_in_title):
-        # A FLAG, not a skip: the holdout showed he does apply to "New Grad 2027" programs
+        # A FLAG, not a skip: the holdout showed the user does apply to "New Grad 2027" programs
         # so the agent or the user decides; the line just makes it visible early.
         unsure.append(("COHORT", "title names a {} graduating class: {}".format(max(years_in_title), role)))
 
@@ -516,7 +663,7 @@ def cmd_triage(args):
         elif CITIZEN.search(s) and not EEO_LINE.search(s):
             unsure.append(("CITIZENSHIP", short))
         # the standing rules, 2026-09-20 (from 50 hand-labelled postings: these four text rules
-        # reproduced 32 of 32 of his skips, where the matcher's ranking did no better than chance).
+        # reproduced 32 of 32 of the user's skips, where the matcher's ranking did no better than chance).
         if NOSPONSOR_STRICT.search(s) and not SPONSOR_OK.search(s) and not META_NOTE.search(s) and "?" not in s:   # a screener QUESTION about sponsorship is not a refusal
             skips.append('no visa sponsorship: "{}"'.format(short))
         elif NOSPONSOR.search(s) or OPT_BAR.search(s):
@@ -525,8 +672,8 @@ def cmd_triage(args):
             unsure.append(("COHORT", short))
         m = RESIDE.search(s)
         if m and not US_WIDE.search(s[m.start():m.start() + 120]) and not META_NOTE.search(s):
-            unsure.append(("RESIDENCY", short))      # a flag, not a skip: he can relocate
-        # Years of experience: his M.S. covers a requirement of up to 2 years; 3+ is a skip.
+            unsure.append(("RESIDENCY", short))      # a flag, not a skip: the user can relocate
+        # Years of experience: the user's degree covers a requirement of up to 2 years; 3+ is a skip.
         # group(1) is the LOWER bound of a range, so "2-6 years" stays a judgement call.
         # The FIRST figure that sits next to an experience word is the requirement; scraped
         # postings often run a whole list together, so judge a window, not the sentence.
@@ -534,6 +681,12 @@ def cmd_triage(args):
             win = s[max(0, y.start() - 90):y.end() + 70]
             if not re.search(r"experience|professional|industry|hands-on", win, re.I) or YOE_HISTORY.search(win):
                 continue
+            if YOE_NEG.search(s[max(0, y.start() - 40):y.start()]):
+                continue
+            post = s[y.end():y.end() + 80]
+            if YOE_IN_LIEU.search(post) or (YOE_DEGREE_SUB_POST.search(post)
+                                            and YOE_DEGREE_SUB_PRE.search(s[max(0, y.start() - 220):y.start()])):
+                continue        # degree substitute, not an experience bar
             n_years = yoe_value(y)
             if first_req is None:
                 first_req = n_years
@@ -561,22 +714,25 @@ def cmd_triage(args):
     band = None
     pay_line = _field(text, "Pay range published")
     if pay_line and pay_line != "none":
-        band = pay_from_text(pay_line)
+        band = pay_from_text(pay_line, line=True)
     band = band or pay_from_text(body)
+    gc = gov_contract_hit(body)
     if band:
         if band[1] < FLOOR:
-            if GOV.search(company) or GOV.search(body[:600]) or GOV_CONTRACTOR.search(body):
+            if GOV.search(company) or GOV.search(body[:600]) or (gc and gc[0] == "hard"):
                 skips.append("whole pay band under the floor ({}) AND government employer".format(fmt_pay(band)))
+            elif gc:
+                notes.append("pay band {} tops out under the floor; contractor wording is hedged, so not a skip".format(fmt_pay(band)))
             else:
                 notes.append("pay band {} tops out under the floor (not a skip on its own)".format(fmt_pay(band)))
         elif band[0] >= 200000:
             unsure.append(("PAY", "band {} starts far above the range -- usually a senior role whatever the title says".format(fmt_pay(band))))
-        elif band[0] > 150000 or band[1] < FLOOR:
-            notes.append("pay band {} outside the target range -- flag before entering a number".format(fmt_pay(band)))
+        elif band[0] > 150000:
+            notes.append("pay band {} outside the target range -- salary answer follows the posting: {}".format(
+                fmt_pay(band), salary_answer(band)["text"]))
 
-    gc = GOV_CONTRACTOR.search(body)
     if gc and not skips:
-        unsure.append(("GOV-CONTRACTOR", body[max(0, gc.start() - 80):gc.end() + 120].replace("\n", " ")))
+        unsure.append(("GOV-CONTRACTOR" if gc[0] == "hard" else "GOV-CONTRACTOR-SOFT", gc[1]))
 
     if skips:
         print("SKIP " + skips[0])
@@ -699,6 +855,34 @@ def squash(s):
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+ROLE_ABBREV = ((r"software development engineer in test", "SDET"),
+               (r"software (development )?engineer(ing)?|software developer", "SWE"),
+               (r"cyber\s*security", "Cybersec"),
+               (r"machine learning", "ML"),
+               (r"artificial intelligence", "AI"))
+ROLE_DROP = {"senior", "sr", "jr", "junior", "i", "ii", "iii", "iv", "v", "new", "grad", "grads",
+             "graduate", "college", "university", "early", "career", "entry", "level", "associate",
+             "mid", "in", "of", "the", "and", "for", "to", "at", "a", "an"}
+
+
+def role_tag(role):
+    """Short file-name tag for the role-named resume copy: "Software Engineer II" -> SWE,
+    "Cybersecurity Analyst" -> Cybersec_Analyst. ASCII letters/digits/underscores, max 4 words."""
+    s = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", role or "")
+    if ":" in s:    # "Early Career: IT Security Engineer" -> after; "SWE: Payments" -> before
+        pre, post = s.split(":", 1)
+        pre_level = all(t.lower() in ROLE_DROP or re.fullmatch(r"20\d\d", t) for t in re.findall(r"[A-Za-z0-9]+", pre))
+        s = post if pre_level else pre
+    s = re.split(r",|\s[-–—|/]\s|\s[–—]|[–—]\s", s)[0]
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    for pat, rep in ROLE_ABBREV:
+        s = re.sub(r"\b(?:" + pat + r")\b", rep, s, flags=re.I)
+    words = [t for t in re.findall(r"[A-Za-z0-9]+", s)       # 20xx cohort years and bare levels 1-5 drop
+             if t.lower() not in ROLE_DROP and not re.fullmatch(r"20\d\d|[1-5]", t)]
+    words = [t[0].upper() + t[1:] if t.islower() else t for t in words][:4]
+    return "_".join(words) or "Resume"
+
+
 def cmd_formpack(args):
     folder = args.folder if os.path.isabs(args.folder) else os.path.join(ROOT, args.folder)
     tex_path, pdf_path = os.path.join(folder, RESUME_TEX), os.path.join(folder, RESUME_PDF)
@@ -724,6 +908,14 @@ def cmd_formpack(args):
             print("FORMPACK_FAILED entry with no bullets: {}".format(e["employer"]))
             return 1
 
+    # Role-named copy for upload (the user, 2026-09-28): recruiters see "Resume_SWE.pdf".
+    # Resume_Resume.pdf/.tex stay the working files every other command reads. An older
+    # copy under a different tag is left alone (never delete files here).
+    upload_pdf = os.path.normpath(os.path.abspath(
+        os.path.join(folder, "Resume_{}.pdf".format(role_tag(args.role)))))
+    if os.path.normcase(upload_pdf) != os.path.normcase(os.path.normpath(os.path.abspath(pdf_path))):
+        shutil.copy2(pdf_path, upload_pdf)
+
     table, loc_text = employer_lookup()
     out = []
     w = out.append
@@ -731,14 +923,16 @@ def cmd_formpack(args):
     w("")
     w("> Sections down to **Work experience** are generated by `jobkit formpack` from")
     w("> `form-data.md`, `profile.md` and the tailored `.tex`. Do not retype them. The prep")
-    w("> agent appends only **FILL PLAN** and **Screener answers** at the bottom.")
+    w("> agent may edit the **Flags:** line below (e.g. `t2-h1b`) and appends **FILL PLAN**,")
+    w("> **Screener answers** and an optional `## Notes for this posting` at the bottom.")
     w("")
     w("**Apply URL (resolved):** " + args.url)
     w("**Platform:** `{}`".format(args.platform))
     w("**Referral source:** **{}** — if not offered, the company careers-site option, then "
       "\"Other\" with `{}` typed in.".format(args.source, args.source))
-    w("**Résumé PDF:** `{}`".format(pdf_path))
+    w("**Résumé PDF:** `{}`".format(upload_pdf))
     w("**Published pay range:** {}".format(args.pay or "none"))
+    w("**Flags:** none")
     w("**Posted:** {}".format(args.posted or "unknown"))
     w("")
 
@@ -757,6 +951,11 @@ def cmd_formpack(args):
         w("---\n\n## " + title + "\n")
         sec = form_data_section(heading)
         body = [l for l in sec if l.startswith("|") or l.startswith("- ")]
+        if heading == "Locked fields":
+            # desired salary is computed per posting from its published band (salary_answer)
+            keep = [l for l in body if not re.match(r"\|\s*(Salary expectation|Forced single number)", l)]
+            at = next((i for i, l in enumerate(keep) if l.startswith("| Notice period")), len(keep))
+            body = keep[:at] + salary_rows(args.pay) + keep[at:]
         out.extend(body)
         w("")
 
@@ -826,9 +1025,9 @@ def cmd_formpack(args):
     dest = os.path.join(folder, "form-pack.md")
     with io.open(dest, "w", encoding="utf-8") as fh:
         fh.write("\n".join(out))
-    print("formpack OK {} | work-ex {} entries, bullets verified against the PDF | schema={} | "
+    print("formpack OK {} | upload copy {} | work-ex {} entries, bullets verified against the PDF | schema={} | "
           "TODO for prep: {}Screener answers".format(
-              dest, len(entries), "yes" if has_schema else "none",
+              dest, os.path.basename(upload_pdf), len(entries), "yes" if has_schema else "none",
               "FILL PLAN + " if has_schema else ""))
     return 0
 

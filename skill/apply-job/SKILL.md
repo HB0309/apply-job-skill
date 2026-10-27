@@ -9,12 +9,12 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 
 ## Fixed paths
 - Workspace: `<WORKSPACE>\`
-- **Read layer: `bin\jobkit.py`** — ALWAYS use this instead of reading the big files.
-  Orchestrator: `posted <url>` · `dup <url>` · `meta <url> --write` · `triage <folder>` ·
+- **Read layer: `bin\jobkit.py`** — use it instead of reading the big files.
+  Orchestrator: `gate <url> --source <board>` (G1–G6 in one call) · `posted <url>` · `dup <url>` · `meta <url> --write` · `triage <folder>` ·
   `track add|set|active|employer|audit` · `count` · `insights` ·
   `sweep-list` · `sweep-done <job_id>` · `sweep-prune` · `scan-add` · `fail add|list|close` (hard rule 8).
   Prep agent: `similar` · `base use <track> <folder>` · `pool tex|notes|entry` · `qa list|get` ·
-  `pagefit <pdf>` · `atsfix <pdf>` (self-checking) · `audit <tex>` · `formpack <folder>` · `schema <url>` ·
+  `pagefit <pdf>` · `atsfix <pdf>` (self-checking) · `audit <tex>` · `formpack <folder>` · `schema <url>` · `salary "<band>"` ·
   `skills <folder> [--pdf <resume.pdf>]` (posting vs. the skills inventory: TRUE / BANNED / GAP, and the keyword-coverage gate line).
   the user only: `base set <track> <folder>` · `base list` (track base résumés in `bases\`).
   Reading `tracker.md`, `qa-bank.md`, or `content-pool.tex` in full is a bug, not a fallback.
@@ -36,7 +36,8 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
   the 1 MB cap some ATSs impose). Which one maps to which request, and the size caveat,
   are in `form-data.md` → Transcripts.
 - Form-only data: `form-data.md` (this folder) — education start dates, certification details,
-  reason-for-leaving lines, languages, standard yes/no defaults. READ before filling any form.
+  reason-for-leaving lines, languages, standard yes/no defaults. Read by `jobkit formpack` at prep;
+  the fill phase reads only `form-pack.md`.
 - Tracker: `tracker.md` — **never edit it directly.** Rows are written only by
   `jobkit track add` (step 10) and changed only by `jobkit track set`; the script escapes pipes,
   enforces the closed status vocabulary (`prepped filled applied viewed oa interview offer
@@ -46,7 +47,7 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 - Style guide: `resume-style.md` (this folder) — prep phase only.
 - **ATS playbooks: `ats\<platform>.md`** — load ONLY the one matching the form's URL.
   `ashby` `greenhouse` `workday` `oracle-cx` `smartrecruiters` `icims` `taleo` `successfactors` `pageup`
-  `talemetry` `phenom`, else `_unknown`. **Phenom** hides behind company domains too
+  `talemetry` `phenom` `lever` `amazon-jobs`, else `_unknown`. **Phenom** hides behind company domains too
   (`careers.rocket.com`) — the tell is an apply route of `/us/en/apply?jobSeqNo=` or
   `/us/en/hvhapply?jobSeqNo=`, or assets from `phenompeople.com`.
   Workday also hides behind company domains (careers.homedepot.com, corporate.target.com,
@@ -55,7 +56,7 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 - **References (load on demand, never all):**
   `references\tailoring.md` (steps 1–8, prep subagent) · `references\inbox.md` ·
   `references\insights.md` · `references\ats-quirks.md` (when a form misbehaves) · `references\setup.md` (first run) ·
-  `references\fill.md` (step 9, fill phase) · `references\prep-brief.md` (the subagent
+  `references\fill.md` + `readback.min.js` (step 9, read by the fill subagent, never here) · `references\prep-brief.md` (the subagent
   prompt template) · `references\scan-sources.md` (scan URLs) ·
   `references\mail-harvest.md` (job alerts in Gmail → sweep queue) · `references\sweep.md` ·
   `references\scan.md` · `references\hybrid-swaps.md` (prep, HYBRID postings only). Provenance and dated history live
@@ -67,10 +68,11 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 
 ## Modes
 - `/apply-job <link> [<link> ...]` — apply to one or more jobs (main flow below)
-- `/apply-job <link> --review` — force the full review checkpoint, tailoring stays inline
+- `/apply-job <link> --review` — force the full review checkpoint (step 8) after prep returns
 - `/apply-job <link> --fresh` — skip the variant cache and the track base, tailor from the raw pool
-- `/apply-job <link> --force` — the user overrides a Skip (from `triage` or from prep). Skip the
-  triage step, put `--force` on the brief's `Triage:` line, and do not re-argue the skip.
+- `/apply-job <link> --force` — the user overrides a Skip (from `triage`, from **G7**, or from prep).
+  Rerun `jobkit gate … --force` (triage still runs and only reports) and skip G7, put `--force` on the brief's `Triage:` line — and on its `Visa:` line
+  when the override was a G7 skip — and do not re-argue the skip.
 - `/apply-job inbox` — morning Gmail sweep (`references\inbox.md`)
 - `/apply-job insights` — conversion analysis (`references\insights.md`)
 - `/apply-job sweep [N]` — harvest job alerts from Gmail, then process the queue (below).
@@ -83,7 +85,7 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
 1. **Never invent facts.** Every claim in any output must trace to a specific line in `content-pool.tex` or `profile.md`. No new skills, metrics, employers, titles, or dates. Reword, reorder, select — never fabricate. Two companion files narrow this further, neither widens it: for SKILLS and keyword spelling a non-banned row of `master\skills-inventory.md` is also a valid source (read via `jobkit skills`), and every NUMBER on the page must have a row in `master\metrics-ledger.md` saying how it was measured.
 2. **Never click Submit.** The user always clicks the final submit button.
 3. **Never edit master files** (`master\content-pool.tex`, `master\profile.md`).
-4. **Locked fields — FILL them, don't ask.** Work authorization, visa sponsorship, salary, notice period, and voluntary EEO self-ID all have stored answers. Fill them straight from those answers like any other field, in every mode, and verify each one with the JS read-back of step 9.3 — the read-back is the real safety net, not a prompt. Do NOT stop mid-form to confirm them. Recap every locked value actually entered in the step-9 handoff message, where the user reviews before clicking Submit.
+4. **Locked fields — FILL them, don't ask.** Work authorization, visa sponsorship, salary, notice period, and voluntary EEO self-ID all have stored answers. `jobkit formpack` writes them into `form-pack.md` and the fill agent enters them without asking; its handoff recaps every locked value it entered, which is where the user reviews them before clicking Submit.
 
    **Canonical answers live in `master\profile.md` (identity, work authorization, visa,
    salary, notice period, EEO self-ID) and `form-data.md` (education dates, certifications,
@@ -96,11 +98,9 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
      only if nothing maps), veteran status, disability status — each a direct answer.
    - Notice period / earliest start date.
 
-   **Pause ONLY when** — this list is exhaustive; anything not on it gets filled:
-   1. no stored answer exists for the question at all (it isn't in `profile.md`, `form-data.md`, or above), and the field is required;
-   2. the widget's options genuinely don't map — e.g. a salary *band* picker whose every band sits outside <salary range>. (An EEO dropdown with no matching ethnicity option is NOT a pause: "decline" is the documented fallback.);
-   3. the posting's own published pay range falls outside <salary range> — flag it before entering a number;
-   4. a locked-*category* question never answered before (a genuinely new category, not a new phrasing of an old one).
+   **When a fill stops.** The fill agent's brief decides when it returns `BLOCKED` and what it skips
+   and lists under `Unanswered`. For `BLOCKED`, relay the blocker and pass the user's answers back in
+   `resume` mode (step 9); `Unanswered` items they fills in the form themselves before they click Submit.
 5. **Behavior during runs: near-silent.** One short status line per step. The user sees the match-report headline and, at the end, the handoff recap of locked-field values; everything else is quiet. Reports are blunt — no false encouragement.
 6. **`qa-bank.md` is answer-only.** `<WORKSPACE>\qa-bank.md` holds behavioral/story answers for screener text boxes and interview prep. NEVER read it into a résumé bullet, skill, or summary — it is walled off from résumé tailoring. It IS the source for narrative screener answers (challenge/proud-of/why questions); résumé facts still come only from master + profile.
 7. **Referral source = the job board the link came from.** Every pasted link
@@ -129,28 +129,40 @@ Paste a job link → tailored one-page resume → form filled in Chrome → user
    asked something with no stored answer (a gap in `form-data.md`) · the user corrected you on
    something the skill should have told you.
    **Do not log:** ordinary outcomes — skips, duplicates, stale postings, caps, closed
-   postings, login walls, OTP dialogs, a pause trigger working as designed.
+   postings, login walls, OTP dialogs, a `BLOCKED` return working as designed.
 
 ---
 ## Main flow: `/apply-job <link> [<link> ...]`
 
-**Two phases. Prep is delegated and parallel; filling is serial and stays in this thread.**
-Run the gates below **in this exact order, for every link, before launching any prep** — each
-one is a script call costing 30–200 tokens, and each one can save a whole Opus prep run.
+**Two phases, both delegated. Prep runs in parallel; each form is filled by its own fresh fill
+subagent, so this thread never carries one form's screenshots or field lists into the next.**
+Gate every link **before launching any prep**: one `jobkit gate` call runs G1–G6 in order and
+prints one verdict, so each link costs one turn here and a stopped link never costs a prep run.
 
 ```
-G1  jobkit posted <url>                      STALE -> stop and ask (all modes)   UNKNOWN -> continue
-G2  jobkit dup <url>                         MATCH -> report, next link
-G3  jobkit meta <url> --write --posted "…" --source <board>
-        -> company | role | location | platform | pay | apply_url | folder   (job-posting.md written)
-        CLOSED?  -> open the link once to confirm; if gone, log `skipped --notes "posting closed"`
-        NO_META  -> no API for this host; skip G4–G6, prep fetches the posting and runs them itself
-G4  jobkit dup <url> --company "<C>" --role "<R>"      catches the same job under another URL
-G5  jobkit track employer "<C>"              AT CAP -> log `held --notes "cap"`, no prep, tell the user
-G6  jobkit triage <folder>                   SKIP -> log `skipped`, no prep;  Ua university employerRE -> read the lines, decide
+G0  jobkit gate <url> --source <board> [--force] [--stale-ok]   runs G1-G6, one verdict:
+    GATE PASS | folder= | company= | role= | platform= | pay= | apply= | posted= | employer=
+        -> G7, then prep. Read ONLY the indented lines: `  unsure:` decide, `  note:` carry,
+           `  dup: FUZZY DIFFERENT_REQ` ignore, `  dup: FUZZY UNKNOWN_REQ` judge on location/team,
+           `  skip(forced):` / `  dup: PRIOR_SKIPPED|PRIOR_HELD` copy to the brief's `Triage:` line.
+    GATE STOP G1 STALE        -> ask the user (all modes); on yes rerun with --stale-ok
+    GATE STOP G2|G4 DUPLICATE -> report the printed row, next link (MATCH or FUZZY SAME_REQ)
+    GATE STOP G3 CLOSED       -> open the link once; if gone, log `skipped --notes "posting closed"`
+    GATE STOP G5 AT_CAP       -> log `held --notes "cap"`, no prep, tell the user
+    GATE STOP G6 SKIP         -> log `skipped` with the reason; the user overrides with --force
+    GATE NO_META              -> no API for this host; prep fetches the posting and runs G4 (dup)
+                                 and G6 (triage) itself; run G5 (`track employer`) when prep returns
+    The folder is written only once the gate reaches G6. If `gate` itself errors, log the
+    failure and run the same gates by hand:
+      G1 jobkit posted <url> · G2 jobkit dup <url> · G3 jobkit meta <url> --write --posted "…"
+      --source <board> · G4 jobkit dup <url> --company "<C>" --role "<R>" · G5 jobkit track
+      employer "<C>" · G6 jobkit triage <folder>
+G7  visa eligibility (E-Verify + work visa)       work visa at entry level is sufficient -> APPLY (E-Verify is a
+        flag, not a veto). Neither -> log `skipped` with the named reason. Always record the tier.
 PREP   one `apply-job-prep` subagent per surviving link, all launched in ONE message (parallel)
-FILL   serial, here, one tab per posting -> step 9 (references/fill.md).
+FILL   one `apply-job-fill` subagent per form, one tab per posting -> step 9.
        PIPELINED: start filling a posting the moment ITS prep returns — never wait for the batch.
+       One form ahead only for Greenhouse / Ashby / Lever; everything else strictly serial.
 step 10  jobkit track add … (once per link, whatever the outcome)
 ```
 
@@ -162,7 +174,7 @@ Runs FIRST: before the duplicate check, before prep, before the browser.
    G2 silently. **Carry the date and age forward** — every later step needs them.
 2. `STALE date=<YYYY-MM-DD> age=<N>d confidence=<level>` — older than 3 days. STOP for
    that link. Report and wait:
-   `<Company> <Role> — posted <YYYY-MM-DD> (<N> days ago, confidence <level>). Older than
+   `<Company> <Role, or the link when the gate stopped before meta> — posted <YYYY-MM-DD> (<N> days ago, confidence <level>). Older than
    3 days. Apply anyway?`
    Do not run the duplicate check, do not launch prep, do not open the browser until they
    answer. On yes, resume the normal flow from G2 and carry the date forward.
@@ -181,9 +193,12 @@ tokens of fields this gate does not use.
 
 ### G2 Duplicate check
 `python bin/jobkit.py dup "<url>" --company "<C>" --role "<R>"` (company/role optional; they
-catch the same job posted under two URLs). On `MATCH` or `FUZZY MATCH`: STOP for that link,
-reply `Duplicate — applied to <company> <role> on <date>, status: <status>. Folder: <path>`,
-and move to the next link. On `NONE`, continue. G2 sees only the URL. G4 repeats it with the
+catch the same job posted under two URLs). On `MATCH`: stop for that link, reply
+`Duplicate — applied to <company> <role> on <date>, status: <status>. Folder: <path>`, and move
+to the next link. A fuzzy hit prints its requisition verdict: `FUZZY SAME_REQ` is a duplicate;
+`FUZZY DIFFERENT_REQ` is not (a different req at the same employer); `FUZZY UNKNOWN_REQ` (an
+aggregator link with no id) is a duplicate only when location and team also match, and never a
+row this run wrote itself. On `NONE`, continue. G2 sees only the URL. G4 repeats it with the
 company and role `meta` returned, which is what catches the same job reached through Jobright,
 LinkedIn and the employer's own ATS. On `NO_META` the prep agent runs G4 itself.
 
@@ -208,8 +223,10 @@ before filling.
 ### G6 `triage` — the auto-skip pre-filter, as a script
 `python bin/jobkit.py triage "<folder>"` prints one of:
 - `SKIP <reason>` — strict matches only. Log `skipped` with the reason, list it with its link in
-  the final report so the user can re-run it with `--force`. No prep. **The eligibility rules, stated
-  here once** (tailoring.md, scan.md, mail-harvest.md and the agent definition point here):
+  the final report so the user can re-run it with `--force`. No prep. **The eligibility rules that are
+  readable from the posting text** (scan.md and mail-harvest.md point here). **Visa/sponsorship eligibility is NOT one of them — it needs an
+  employer lookup and lives in G7 below.** A posting's own "we cannot sponsor" wording is still a G6
+  skip; whether the employer *files* work visa is G7's question:
   - a defense / gov / space-launch employer on the auto-skip list (`form-data.md` → Auto-skip
     employers), a required clearance, required US citizenship, an ITAR / US-person requirement;
   - the employer refusing visa sponsorship **in its own voice** ("we are unable to sponsor");
@@ -221,7 +238,7 @@ before filling.
     never a skip). Hourly pay is annualised at 2,080 hours; government-CONTRACTOR wording
     (national security, federal agencies, DoD / DHS customers) counts as government, and on its
     own is only a `GOV-CONTRACTOR` flag.
-- `Ua university employerRE` + flagged lines — read them (they are the only posting text you ever read). Skip only
+- `UNSURE` + flagged lines — read them (they are the only posting text you ever read). Skip only
   on a genuine eligibility bar from the list above, a graduation cohort they are outside of (a
   `COHORT` flag: they do apply to some "New Grad 2027" programs, so judge it), or a non-US
   location. `RESIDENCY` is a skip only when the posting rules out relocating. `YOE`: skip when the
@@ -229,6 +246,116 @@ before filling.
   or a Senior title on an otherwise entry-level posting is **not** a skip: pass the lines to prep
   on the brief's `Triage:` line and let it judge against the pool.
 - `PASS` — launch prep. `note:` lines (pay band outside <salary range>) go on the brief too.
+
+### G7 Visa eligibility — E-Verify and work visa filing history, checked separately
+Runs after `triage` PASS/UNSURE, before prep. Neither fact is in the posting text — both need an
+employer lookup, so this is its own gate. **Both checks always run; only work visa can veto.**
+
+**Check 1 — E-Verify enrollment.** Recorded, never a veto (decision rule below). It matters because the work-authorization
+extension is only filable through an E-Verify-enrolled employer, and the user's filing window is
+**<filing window start> → <EAD end date>** (EAD expiry). So E-Verify determines whether *that* path stays open at a
+given employer, and a `no` triggers a warning, never a skip.
+Source: the E-Verify participating-employer search / published employer list.
+
+**Check 2 — work visa filing history at entry level.** Check the employer has filed, and filed for
+entry-level titles — big employers that sponsor broadly sometimes do not sponsor new grads.
+Sources, in order: **USCIS work visa Employer Data Hub** (primary), `h1bdata.info` with the year filter set
+to All years (mirror). A company-level hit is not enough on its own; note the titles.
+
+**Young-startup carve-out (standing rule).** A funded company **under ~3 years old** with no filing
+history has usually never *needed* to file — missing data, not a refusal. The research is explicit that
+*funding stage, not company size, predicts sponsorship*, and that small-company hesitancy is *"often
+ignorance, not policy."* So for a funded startup under ~3 years: **no work visa history → `UNSURE`, not
+`t4-neither`.** Apply, and resolve sponsorship by asking the founder, who is already the contact in the
+outreach plan's startup lane. Keep the hard skip for established employers that have had years of
+opportunity to file and never have.
+
+**Check 3 — company size and stage (outreach sizing only, never eligibility).** While looking the
+employer up for checks 1 and 2, capture **estimated headcount** and **funding stage** (`seed` |
+`series-a` | `series-b` | `series-c+` | `public` | `private-unknown`). One lookup, three outputs. This
+feeds outreach scoring in prep and nothing else — **it can never cause a skip**, and `unknown` is missing
+data, never a negative.
+
+**The decision rule (standing rule): visa sponsorship at entry level is sufficient on its own.**
+If the employer sponsors, apply — **even with no E-Verify**. E-Verify stays a recorded property, because
+it decides whether the work-authorization extension can be filed at that employer, but it is **never a veto**.
+
+**Four tiers. Two apply, two skip:**
+
+| Tier | E-Verify | work visa at entry level | Action | Why |
+|---|---|---|---|---|
+| `t1-both` | yes | yes | **APPLY** | Both paths open: work-authorization extension filable here *and* the employer sponsors. Strongest — prefer these, and spend referral capital only here. |
+| `t2-h1b` | no | yes | **APPLY** | Sponsors, but **work-authorization extension cannot be filed here.** See the gap warning below. |
+| `t3-everify` | yes | no | SKIP, labelled | Could carry the work-authorization extension filing (runway to ~2029 + two clean lottery attempts) but no sponsorship record. Recoverable pool — keep the label so `insights`/`fail` can surface it later without re-running lookups. |
+| `t4-neither` | no | no | SKIP | No path. |
+
+**⚠️ Warn on every `t2-h1b` application, in the brief and in the step-9 handoff.** A non-E-Verify
+employer cannot support the work-authorization extension, so the user's EAD still ends **<EAD end date>** while cap-subject
+work visa petitions are not filed until **<next cap filing date>**. Cap-gap grants student status but **no work authorization**
+once they are in the 60-day grace period — so even a lottery win implies **no work from <EAD end date> to
+<cap start date>**. `t2-h1b` is therefore worth an application but is strictly worse than `t1-both`, and at offer
+stage the ask changes: **will they enroll in E-Verify** (free, ~1–2 weeks) so the STEM filing stays open,
+or will they hold the role through the gap? Surface this before the final round, never after signing.
+
+**Verdicts and the reason that must accompany each one.** A skip is never logged as a bare `SKIP` —
+name which check failed, what was looked up, and what was found:
+```
+PASS  t1-both      "<C>" in E-Verify list (<source>, <date>) + work visa filings at <title> (<source>)
+PASS  t2-h1b       "<C>" work visa filings at <title> (<source>); NOT in E-Verify list (<source>, <date>)
+                   -> carry the STEM-OPT-gap warning onto the brief
+SKIP  t3-everify   "<C>" in E-Verify list but no work visa filings on record (<source>, all years)
+SKIP  t3-everify   "<C>" in E-Verify list; files work visa but not below <title/level> (<source>)
+                   -> new-grad pipeline does not sponsor; same tier, both are
+                      "STEM-OPT-capable but will not sponsor the user at their level"
+SKIP  t4-neither   "<C>" not in E-Verify list (<source>, <date>) and no work visa filings (<source>)
+UNSURE             lookup inconclusive (name ambiguity, subsidiary, or source unreachable)
+                   -> say which source failed and what was tried; do NOT guess either way
+```
+`UNSURE` is not a skip. Report it with the ambiguity named so the user can resolve it in one look.
+**On an inconclusive E-Verify lookup with work visa filings confirmed, treat it as `t2-h1b` and apply** —
+under this rule E-Verify cannot block, so an unknown E-Verify status never costs an application.
+
+**Log the tier on every posting, passed or skipped.** The label is the recovery mechanism: it lets the
+`t3-everify` pool be re-opened later without re-running any lookup. **Never drop it because the posting
+was skipped.**
+
+**Where it goes — `tracker.md` has no tier column.** It is a fixed 12-column table (`jobtrack.py`
+`COLS`) and rows are only ever written by `jobkit track add|set`, so the tier travels as a **structured
+token in Notes**, first thing, in this exact form so it stays greppable and `insights` can parse it:
+```
+jobkit track add … --status skipped --notes "tier=t4-neither; not in E-Verify list (e-verify.gov, 2026-09-25) and no work visa filings (USCIS Data Hub, all years)"
+jobkit track add … --status applied --notes "tier=t2-h1b; work visa at SWE I (h1bdata.info); NO E-Verify — work-authorization extension not filable here"
+```
+Same convention for the outreach fields the plan in `<projects folder>\cold-outreach-sourcing.md` needs:
+`outreach=yes|no`, `channel=li-connect|email|github`, `referral=real|portal|none`. Semicolon-separated,
+`key=value`, always at the front of Notes. **Adding real columns is the better long-term fix** — it needs
+a `COLS`/`HEADER` change in `jobtrack.py` plus a migration of existing rows, so it is deliberately not
+done here.
+
+**Reason discipline applies to every gate, not just G7.** Any `skipped` log and any line in the final
+report states the specific trigger — the quoted posting phrase, the number, the employer name, or the
+failed lookup — never a category alone. "Skipped: 5+ years required (posting: *'5+ years of
+professional experience'*)" is a reason; "Skipped: YOE" is not. the user overrides with `--force`, and a
+reason they cannot evaluate is a reason they cannot override.
+
+**How to run the two lookups, in order. Stop at the first that answers.**
+1. **WebFetch / WebSearch** against the E-Verify employer search and the USCIS work visa Employer Data Hub,
+   or `h1bdata.info` with the year filter on All years.
+2. **Firecrawl** (`firecrawl_scrape` / `firecrawl_search`) when a host blocks the plain fetch.
+3. **Playwright MCP — the fallback when neither can reach the source.** Both the E-Verify
+   participating-employer search and the USCIS Data Hub are interactive, JS-driven pages that routinely
+   defeat automated fetching, so this is an expected path, not a last resort. These are public,
+   unauthenticated lookups — no logged-in session is needed, so Playwright is the right tool here, not
+   Claude in Chrome: navigate, search the company, read the result from the accessibility-tree snapshot
+   (ref-based, not screenshots), then close the page. Load the Playwright tools with a single
+   `ToolSearch` call before starting. Do **not** log in anywhere or submit any form — these are public
+   read-only searches. Fall back to Claude in Chrome only if Playwright itself fails to reach the page
+   (e.g. active bot-detection that specifically requires a real logged-in browser profile).
+4. Still no answer → `UNSURE`, naming which sources were tried and how each failed. Never guess.
+
+**Not yet automated.** A `jobkit visacheck "<company>"` subcommand — caching the E-Verify employer list
+and the USCIS Data Hub extract locally, with fuzzy name matching and a subsidiary alias table — is the
+obvious next build, and would remove almost all of the above.
 
 ### PREP — delegate steps 1–8
 Launch one subagent per surviving link, **all in one message so they run in parallel**, with
@@ -267,33 +394,73 @@ Otherwise: spot-check — show only the match-report headline, then go to the br
 Either way, state the posting age in the same breath as the match assessment — one clause,
 `posted <YYYY-MM-DD>, <N> days ago` (or `posting date unknown`), alongside the `track employer` count line.
 
-### 9. Fill the form in Chrome
-Read `references/fill.md` now, once per session — it holds all the mechanics and the handoff
-block. This section is only the contract; nothing here is repeated there.
-- **Input is `form-pack.md` only.** It already contains the platform playbook verbatim, so do
-  not load `ats/<platform>.md` separately — unless the form lands on a different platform than
-  the pack names (an Apply click that redirects to Workday, Phenom behind a company domain). Then
-  load that one playbook before touching a field. Never open the pool, `qa-bank.md`, the style
-  guide or the `.tex`: a missing value is a gap in the pack, reported at handoff.
-- **You fill every page and click every Next / Continue / Save yourself**, on every platform. The ONLY stop is the final
-  review/Submit screen. **Never click Submit.**
-- What keeps that safe, all mandatory: never batch across a click; one full read-back of the
-  page before each advancing click; after each click, check the URL and the page heading before
-  doing anything else. If the page is a confirmation / "thank you" / "application received"
-  screen that you did not expect, STOP and report it as an auto-submit.
-- Two platform traps that stay, because on these the advancing control IS the submit:
-  **Phenom** — if the URL contains `/hvhapply`, the resume upload submits the application: do
-  not upload, hand the tab to the user. **Oracle CX** — fill everything except the final field of
-  the last section, then hand off; the form can submit with no Submit button once complete.
-- **Idle-timeout platforms (Oracle CX, SmartRecruiters): fill in one uninterrupted block.** Do
-  not start one while waiting on the user for something else, and do not pause mid-form.
-- Account / login walls and OTP dialogs: stop and hand the user the browser. Never create accounts
-  or enter passwords or OTPs, even if offered.
-- One tab per posting; filled tabs stay open until the user confirms they submitted (details in fill.md).
+### 9. Fill the form — one fresh `apply-job-fill` subagent per form
+Each form is filled by its own subagent, **`subagent_type: "apply-job-fill"`** (Sonnet, defined in
+`<agents folder>\apply-job-fill.md`; it reads `references\fill.md` itself). Its
+context starts empty for every form, which is the point: screenshots and field lists from one
+form are never re-read while filling the next. **Do not read `form-pack.md`, `fill.md` or any
+playbook in this thread, and do not drive the browser here** — except to close a tab after the user
+confirms, or to answer their question about a tab. If the agent type is missing, stop and tell the user.
 
-When everything is filled, STOP before the submit button and give the handoff block from
-`fill.md` (posted date, locked fields entered, work-experience and education counts, optional
-sections, unanswered).
+**Launch prompt — only this block:**
+```
+Mode: foreground | ahead | resume
+Folder: applications\<folder>
+Company / Role: <C> / <R>
+Apply URL: <resolved apply URL from the prep return>
+Platform: <platform>
+Posted: <YYYY-MM-DD (N days ago) | unknown>
+Tab: new | <tabId> | unknown             (resume: the tab from the last return; unknown after a crash)
+the user's answers: <label -> answer, one per line>    (resume after BLOCKED only)
+Deferred: <the list from PARTIAL_AHEAD>             (resume after PARTIAL_AHEAD only)
+```
+
+**Scheduling — one fill agent active at a time, one Chrome.**
+- Serial by default: launch in `foreground`, wait for the return, hand off, wait for the user.
+- **One form ahead — Greenhouse, Ashby, Lever only.** When a return is `READY_FOR_SUBMIT` and the
+  NEXT queued form is Greenhouse/Ashby/Lever, show the user the handoff and immediately launch that
+  next form in `ahead` mode (its own tab, no clicks, no focus changes). An ahead run always
+  returns `PARTIAL_AHEAD`: do not show that to the user. When they confirm the first form, relaunch
+  the ahead form in `resume` mode, foreground, with its `Deferred` list (the finish run: the
+  leftover real clicks plus the final screenshot), and hand off its `READY_FOR_SUBMIT`. If they
+  confirms before the ahead agent has returned, wait for its return first — never two fill
+  agents at once. Never run a Workday, Oracle CX, SmartRecruiters or other multi-step /
+  idle-timeout form ahead, and never start one while an earlier form still waits on the user.
+  (Whether creating the ahead tab pulls focus is unverified: if the user reports their screen
+  switching, stop using ahead mode and log it.)
+- **Amazon: one at a time.** Amazon keeps ONE résumé per account, so a second Amazon form's
+  upload would replace the first's. Never launch a second Amazon fill until the user confirms the
+  first is submitted; other companies' forms may run in between.
+
+Every `--notes` below starts with the posting's `tier=<t>;` token (G7 "Where it goes"), then
+`rv=v2;` — the résumé layout variant (v2 = 2026-10-26 layout: city in header, software/AI put
+Experience first and drop the courses line). Rows without `rv=` are v1. `insights` compares
+outcomes by `rv` once v2 has ~150 submitted rows; bump the label whenever the base layout changes.
+
+**Returns.**
+- `READY_FOR_SUBMIT` → show the user the handoff block verbatim (its `Flags:` line carries prep's
+  t2-h1b warning), plus the tab. Then step 10 with `--status filled` (`track set` if a
+  `blocked` row already exists for the folder).
+- `BLOCKED` → **step 10 right away** with `--status blocked --notes "<the blocker>"`, then tell
+  the user the blocker in one line (log in, enter the code, upload the résumé, answer this). When
+  they are done, relaunch in `resume` mode on the same tab with their answers; the row moves on with
+  `track set`. A login or OTP wall is not a skill failure; do not log it. **Phenom `hvhapply`
+  blocker:** the user's upload IS the submission, so when they say they uploaded, `track set <folder>
+  --status applied --notes "hvhapply: the user uploaded"`; never resume that form.
+- `AUTO_SUBMITTED` → report it, step 10 with `--status applied --notes "auto-submitted at <page>"`.
+- `CLOSED` → step 10 with `--status skipped --notes "posting closed"`, close the tab.
+- An agent that errors or returns nothing usable: relaunch it once in `resume` mode with the tab
+  from an earlier return if there was one, else `Tab: unknown` (the agent finds its tab by host
+  and job id). If it
+  fails again, log the failure (hard rule 8), step 10 with `--status blocked --notes "fill agent
+  failed twice"`, and hand the user the tab.
+
+**Multi-link runs: a form found submitted was submitted by the user.** They submits finished forms
+while other fills continue. If a tab shows a confirmation page, ask one line (`<Company> shows
+submitted — you clicked it?`) and on yes log `applied`; it is an auto-submit only when the fill
+agent's own click caused it.
+
+Filled tabs stay open until the user confirms they submitted; then close that tab.
 
 ### 10. Update tracker — through the script only
 ```

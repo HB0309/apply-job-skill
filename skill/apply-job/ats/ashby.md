@@ -11,7 +11,7 @@ Keys are either `_systemfield_*` or a UUID. Types: `String` `Email` `Phone` `Loc
 Stable system keys seen on every posting:
 | Key | Value from form-pack |
 |---|---|
-| `_systemfield_name` | <Full Name> (single "Full Name" field, not split) |
+| `_systemfield_name` | <legal full name> (single "Full Name" field, not split; legal-name rule) |
 | `_systemfield_email` | email |
 | `_systemfield_location` | <City, State> — autocomplete widget, needs a real click + pick |
 | `_systemfield_resume` | resume PDF path via `file_upload` |

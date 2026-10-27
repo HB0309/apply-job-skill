@@ -20,7 +20,7 @@
   sets credentials first, then the agent fills and verifies the rest.
 - Frequently asks **reason for leaving** and **supervisor contact** per job — both come from
   `form-data.md`: reasons are fixed lines; references/supervisor contacts are always left blank.
-- Often asks salary history — leave blank, or "Negotiable" if it blocks.
+- Often asks salary history — leave blank, or "Prefer not to disclose" if it blocks.
 - Multi-page with a progress bar; re-enumerate per page.
 
 ## Known question → answer mappings
@@ -28,9 +28,9 @@
 |---|---|
 | "reason for leaving" | see form-data.md table |
 | "may we contact this employer" | No |
-| "desired salary" | Negotiable, targeting <salary range> |
+| "desired salary" | the pack's Locked fields salary rows (computed per posting) |
 
-## Work-experience ordering (2026-09-05; SKILL.md rule 9b governs the whole section)
+## Work-experience ordering (2026-09-05; fill.md 9b governs the whole section)
 iCIMS renders experience entries in the order they were created and offers no re-sort. The
 resume parse frequently lands them out of order or merges two roles into one. After the upload,
 read every entry back and make the list strictly reverse-chronological (most recent first),
@@ -86,7 +86,8 @@ order, so create them most-recent-first.
 - Dates: the form's own instruction is "if the exact date is unknown, select the first day of the
   month" — follow it over the house day-15 default, and say so in the handoff.
 - A required SMS-consent select can ship pre-selected with **only** a consent option (no decline).
-  Do not set it; flag it to the user as a standing marketing consent they are agreeing to.
+  A required SMS question is answered Yes (form-data.md), so leave it selected and list it under
+  `Consent:` in the handoff.
 - Account linkage can prefill Legal First Name as the FULL name and the Last Name as a
   placeholder. **That may be CORRECT — do not "fix" it before checking.** Where the profile's
   legal name matches the work-authorization document, the legal field must keep that form.

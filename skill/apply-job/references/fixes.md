@@ -28,13 +28,13 @@ what was expected, the workaround, a suggested fix, and `Seen: Nx` when it recur
      ask the user for the value, never invent it (hard rule 1).
    - A script bug gets fixed in `bin\` and re-tested against the folder the entry names.
    - Fix the instruction that misled, do not add a second one that contradicts it. Keep edits
-     short — the skill runs on Sonnet, and every added line is read on every run.
+     short: every added line is read on every run.
    - Never edit `master\` files or `bases\`.
 6. Close each entry: `python bin/jobkit.py fail close F-0007 --note "<file changed + one line>"`,
    or `--wontfix --note "<why>"`. An entry is closed only when the fix is actually in the file.
 7. Add one dated paragraph to `references\changelog.md` (what failed, what changed, entry ids).
-8. Tell the user which files changed, remind them that edits to `agents\apply-job-prep.md` need a new
-   session, and offer to commit the changed skill files if the skill folder is under version control.
+8. Tell the user which files changed, remind them that edits to `agents\apply-job-prep.md` or
+   `agents\apply-job-fill.md` need a new session, and offer to commit the changed skill files if the skill folder is under version control.
 
 `python bin/jobkit.py fail list --all` shows closed entries too — use it when a failure looks
 familiar, to check whether an earlier fix did not hold.

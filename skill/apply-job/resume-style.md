@@ -84,7 +84,7 @@ scale". Claims about what a system did come only from pool lines that say so.
 - Exception: the pool may mark exactly one low-relevance entry as the **filler entry**,
   allowed to run with a single dense bullet as the last page-fill lever.
 - One page is a ceiling and a target. Fill short pages in this order: restore trimmed
-  bullets → pull in the next-ranked dropped entry → restore the "Relevant Courses" line →
+  bullets → pull in the next-ranked dropped entry → restore the "Relevant Courses" line (only on a track the courses support) →
   add real detail to the most relevant entry → filler entry. Never pad with invented or
   restated content.
 
@@ -99,6 +99,17 @@ one sentence to fill a line.
   dropping items the pool marks as do-not-list.
 - The summary is one to two lines, carries exactly one metric that also appears on the page,
   and never claims a scope broader than the bullets beneath it.
+
+### Section order and header (ABSOLUTE)
+- Once you have real work experience, it goes above Education: Summary → Experience →
+  Projects → Skills → Education. Keep Education near the top only on a track where the
+  degree itself is the strongest signal.
+- Drop the "Relevant Courses" line on any track the courses do not match. Off-track
+  coursework reads as "applying out of field".
+- The header starts with your city (and "open to relocation" if true). Recruiter searches
+  and ATS rankers filter by location.
+- Tag every tracker row with the layout variant (`rv=<v>;` in Notes) so a layout change can
+  be measured instead of guessed.
 
 ### Portrayal checks on every render
 - Tense: concluded roles in past tense, the current role in present tense, never mixed.

@@ -25,9 +25,11 @@ create). LinkedIn cannot be fetched by Firecrawl. Create
 `**Posted:** <the date the prompt gave you>` (never a date scraped off the page), then
 `- **Company:**`, `- **Role:**`, `- **Location:**`, `- **Pay range published:**` bullets, a
 `---` line, then the body. Then run
-`python bin/jobkit.py dup "<url>" --company "<C>" --role "<R>"` (`MATCH` / `FUZZY MATCH` → stop,
-return `VERDICT: Duplicate` with the prior row) and `python bin/jobkit.py triage <folder>`
-(`SKIP` → return `VERDICT: Skip` with its reason).
+`python bin/jobkit.py dup "<url>" --company "<C>" --role "<R>"` (`MATCH` → stop, return
+`VERDICT: Duplicate` with the prior row; `FUZZY SAME_REQ` → Duplicate; `FUZZY DIFFERENT_REQ` →
+not a duplicate; `FUZZY UNKNOWN_REQ` → Duplicate only when location and team also match, never a
+row this run wrote)
+and `python bin/jobkit.py triage <folder>` (`SKIP` → return `VERDICT: Skip` with its reason).
 
 ### 2. Hard filter — allowed to say no
 `jobkit triage` has already removed the clear-cut cases. What is left for you is the judgement
@@ -84,6 +86,8 @@ Then `python bin/jobkit.py base use <track> <application-folder>`:
 `python bin/jobkit.py pool tex`. **Never read `master\content-pool.tex` directly.** Copy
 `master\resume.cls` into the application folder unchanged, then **Write**
 `<application-folder>\Resume.tex` from the pool text already in context.
+The pool is a superset, not a layout: apply the v2 layout from resume-style.md Structure while
+writing (header city first; software and AI put Education last and drop the courses line).
 
 **3a. Score and select Experience and Projects.** Everything in the pool competes fresh on
 every run.
@@ -136,7 +140,10 @@ every run.
 
 **3c. Portrayal pass. Run after 3b, before the factual audit. All five, every run.**
 1. **Tense.** An entry whose end date is not `Present` leads every bullet with a past-tense
-   verb; the `Present` entry leads with present tense (if the pool stores the current role in past tense, fix it in the copy). Fix it in the copy, never in the pool.
+   verb. <Employer A> is `Present`, but every bullet in it describes finished work
+   (<product>, the <assessed platform> assessment), so it stays past tense too: `Led`, `Hardened`,
+   `Delivered`, `Reviewed`. Never flip them to `Lead`/`Harden`. Present tense is only for new
+   ongoing work the user adds to the pool.
 2. **One metric in the Professional Summary.** Weave in the single strongest metric already on
    this page for this posting's track. It must come from a bullet that is on the page; the
    bullet keeps the detail. Never add a metric the page does not already carry.
@@ -193,7 +200,8 @@ The target is **one page, filled to near the bottom margin**:
   done. Levers, in order:
   1. restore trimmed bullets,
   2. pull in the next-highest-scoring dropped entry from 3a (at its normal 2-3 bullets),
-  3. restore the Education "Relevant Courses" line,
+  3. **security track only:** restore the Education "Relevant Courses" line (software and AI
+     résumés never carry it, see resume-style.md Structure; skip to lever 4),
   4. add real detail to the most relevant entry,
   5. **final catch-all:** if still `SHORT` and <filler entry> is not on the page, add it with
      a single dense bullet, whatever the remaining gap. This always runs before accepting a
@@ -230,7 +238,39 @@ VERDICT: Strong | Worth it | Skip
 <one sentence of reasoning>
 Red flags: <n> | Rewordings to rehearse: <n>
 Keyword coverage: <on page>/<posting keywords> (<X>%) | true-but-missing: <n>
+
+OUTREACH: deep-candidate | light | none
+Score:   <written by outreach.py score --write>
+Company: <headcount est | unknown> | <seed|series-a|series-b|series-c+|public|private-unknown>
+Tier:    t1-both | t2-h1b | unsure        (from G7, copied not re-derived)
+Hook:    <the one specific artifact: eng-blog post title, repo, talk, release> | none
+Target:  <reporting-line title quoted from the posting> | <team name> | none stated
 ```
+
+**The OUTREACH block is advisory and never changes `VERDICT`.** They answer different questions:
+`VERDICT` is "is this worth applying to", `OUTREACH` is "is this worth 10 minutes of person-hunting".
+A posting with `Hook: none` and `Score: 0` can still be `VERDICT: Strong`: apply, and skip the outreach.
+
+**Six fixed fields, no narrative.** They are cheap by design:
+- **`Company`** — `<headcount> | <stage>`, copied from G7 check 3 on one line. Do not research it again;
+  `unknown` is fine.
+- **`Tier`** — copy from the brief's `Visa:` line. Do not re-derive.
+- **`Hook`** — you have already read the posting and the company for tailoring. Name the one concrete
+  artifact a message could open on, or `none`. Do not go hunting for one.
+- **`Target`** — quote the posting's own reporting line (*"you will report to the Head of Platform"*) and
+  the named team (*"join our Cortex team"*). **Highest-value field and free**, because that sentence is
+  already in front of you. `none stated` when the posting gives neither.
+- **`Score` and the `OUTREACH:` verdict are computed by code, not by you.** Write the other four
+  fields, then run `python <projects folder>\outreach\bin\outreach.py score "<application-folder>" --write`.
+  It computes the score, rewrites the block in its exact six-line format (the `/outreach` skill parses it),
+  and prints `<verdict> score=<n> ...` — copy that line into your return. What it rewards, so the fields
+  you write carry the right information: small companies and funded startups (emptier inboxes, findable
+  teams) over large public ones; confirmed entry-level work visa filings (`t1-both` or `t2-h1b`, E-Verify
+  aside); a real hook; a quoted reporting line or a specifically named team. `unknown` size is never a
+  negative. `MISSING <field>` in its output means a field you left empty.
+- You are **scoring, not selecting.** `/outreach` ranks the whole batch against a weekly budget; a
+  per-posting agent cannot know whether it is in the top two.
+
 **Keyword coverage gate.** Copy the line from
 `python bin/jobkit.py skills <application-folder> --pdf <application-folder>\Resume.pdf`
 (after the final compile + `atsfix`). `true-but-missing` must be **0** before you leave step 5;
@@ -261,7 +301,9 @@ Selection:  base = security (TRACK security=5 software=4 ai=2, HYBRID security+a
 For each question in the posting plus the standard set (why this company, availability, salary,
 work auth): the first sentence answers the question outright, one concrete detail from real
 experience, zero filler ("I am writing to express..." is banned). Locked-field questions: one
-line straight from profile, marked `🔒 LOCKED — fill from profile, recap at handoff`.
+line straight from profile, marked `🔒 LOCKED — fill from profile, recap at handoff`. A salary
+question's answer is the free-text line from `python bin/jobkit.py salary "<published band or
+none>"`, verbatim (`Targeting $160,000`), never your own figure and never "negotiable".
 
 **Punctuation.** Inside an answer use only commas and periods (plus a question mark or
 apostrophe where grammar needs one). **No colons, no semicolons, no dashes of any kind** as
@@ -314,15 +356,17 @@ work-experience entries exactly as they stand on the PDF, and the raw form schem
 `FORMPACK_FAILED …` means the résumé layout no longer parses or the PDF is stale: fix the cause
 (usually recompile) and re-run; only if it still fails, write the pack by hand in the same layout.
 
-Then open `form-pack.md` and replace its two `<!-- PREP AGENT … -->` markers, nothing else:
+Then open `form-pack.md` and replace its two `<!-- PREP AGENT … -->` markers (plus, when they
+apply, the header's `**Flags:**` line for t2-h1b and a `## Notes for this posting` section below):
 - **FILL PLAN** (only when the pack contains a schema): an ordered `field key → value` list,
   every dropdown answer matched to the schema's own option strings, fields needing a real click
   flagged, name fields per the legal-name rule. No schema → the script already wrote
   `NO SCHEMA — DOM path`. **Never invent a fill plan.**
 - **Screener answers**: `screener-answers.md` verbatim, character counts included.
-Add a short `## Notes for this posting` section only for what the script cannot know: a pay band
-outside <salary range>, a posting-specific yes/no ("previously worked at <Company>?" is already
-No), an unusual required upload.
+Add a short `## Notes for this posting` section only for what the script cannot know: a
+posting-specific yes/no ("previously worked at <Company>?" is already No), an unusual required
+upload, or an apply URL carrying LinkedIn's `openSDUIApplyFlow=true` (that form is invisible to the
+fill tools: say the user submits the PDF by hand). The salary answer is already computed in Locked fields.
 
 ### 8c. Return to the caller
 The return format is fixed in your agent definition. Nothing else: everything else is on disk.

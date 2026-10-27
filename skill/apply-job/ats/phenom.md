@@ -64,7 +64,7 @@ before handing off. Treat the review page, not the DOM, as the source of truth.*
 - Consequence (Rocket 2026-09-10): a newly added work entry could not be back-dated past the
   values it inherited, so an out-of-order 4th entry could not be fixed. **Do not add an
   experience entry that is not on the tailored PDF** — the three PDF entries in PDF order is
-  both correct per SKILL.md 9b and the only order the widget will accept cleanly.
+  both correct per fill.md 9b and the only order the widget will accept cleanly.
 
 ## Resume parse
 
@@ -72,7 +72,7 @@ before handing off. Treat the review page, not the DOM, as the source of truth.*
   experience, education and skills. **`/apply` only** — on `hvhapply` the upload submits the
   application outright (see the box at the top).
 - The parse is good on work experience: Rocket got all three entries right, in PDF order,
-  with correct MM/YYYY dates and no invented entries. **Still diff it** (SKILL.md 9b).
+  with correct MM/YYYY dates and no invented entries. **Still diff it** (fill.md 9b).
 - The parse is bad on two things:
   - **Name comes back ALL CAPS.** Always retype it in proper case.
   - **Skills becomes a noisy dump** (`Node`, `SES`, `Stripe Billing`, `AirCrack`, fragments of

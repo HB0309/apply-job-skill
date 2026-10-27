@@ -11,7 +11,7 @@ progress bar reads "STEP N OF 7".
    all still labeled "Step 2 of 7" with their own inner progress bar: Contact Details -> Work
    History -> Education History. Uploading a résumé auto-parses name/email/phone AND full work
    history (title, company, dates, description bullets) AND education (school/degree/major) —
-   often correctly, but SKILL.md rule 9b applies: **open every parsed entry via EDIT, overwrite
+   often correctly, but fill.md 9b applies: **open every parsed entry via EDIT, overwrite
    every field from `form-pack.md` including the full description, and verify field-by-field**,
    not just the summary card. A card showing "Requires Attention" in red under an entry means
    a required field failed to parse — always fix these before Next will let you proceed.
@@ -46,7 +46,7 @@ progress bar reads "STEP N OF 7".
 - **Typing into one text field on Step 6 can silently reset an unrelated dropdown on the same
   page** (observed: filling the sponsorship "if yes, please explain" textarea reset the
   separate "Are you able to perform all requirements..." dropdown back to blank/required).
-  Always re-screenshot and re-verify every dropdown on a step after typing into any free-text
+  Always re-run `__rbCheck` over every dropdown on a step after typing into any free-text
   field on that same step, before clicking Next.
 - Hidden auto-resize helper `<textarea>` elements with no `id`/`name` and literal value `"x"`
   sit alongside every real textarea on Step 6 — a naive `querySelectorAll('textarea')` read-back

@@ -12,15 +12,15 @@ numbered wizard. MassCareers ran 11 steps, renumbering to 10 after the résumé 
 5 Employment History · 6 Licenses and Certifications · 7 File Attachments ·
 8 Electronic Signature · 9 Diversity Survey · 10 Review and Submit.
 
-## Hand-offs required (do not do these yourself)
-- **Privacy Agreement** — accepting terms is the user's call.
-- **Account creation / sign-in** — prohibited.
-- **Electronic Signature (step 8)** — a full-name field that is explicitly "the electronic
-  equivalent of a hand-written signature" and authorizes a **full background investigation**
-  plus transmission of PII to a third party. Always hand this to the user. When handing it over,
-  say that this one takes the **legal** name (`<Full Name>` / `<legal last name>`), not the everyday one —
-  it feeds the background check, which is matched against the work-authorization record.
-  See `form-data.md` → **Name convention**.
+## Privacy, account, signature
+- **Privacy Agreement** — accept it and list it under `Consent:` in the handoff (the user,
+  2026-09-29: Taleo follows the normal consent rule, fill.md).
+- **Account creation / sign-in** — never; return `BLOCKED` ("login wall").
+- **Electronic Signature (step 8)** — a full-name field that is "the electronic equivalent of a
+  hand-written signature" and authorizes a **full background investigation** plus transmission
+  of PII to a third party. Fill it with the **legal** name (`<legal full name>`, form-data.md →
+  Name convention), since the background check is matched against the work-authorization
+  record, and name it on the handoff's `Consent:` line so the user sees what they are signing.
 
 ## Mechanics
 - **`Save and Continue` is a full page navigation** (JSF postback), not AJAX. Never hold a JS
@@ -41,8 +41,8 @@ Taleo parses the uploaded PDF and pre-populates Education and Employment, **scra
 Observed on the first run:
 - An orphan 3rd education row: no institution, Program `INFORMATION SECURITY`, Level `Other`. Clear it.
 - Employer collapsed to `<Univ>` with an **empty** Job Title.
-- <filler entry>'s dates (Aug–<Mon YYYY>) paired with the **<Employer D>** job title.
-Re-write every prefilled field from `form-pack.md`; never trust the parse (SKILL.md rule 9b).
+- One entry's dates paired with another entry's job title.
+Re-write every prefilled field from `form-pack.md`; never trust the parse (fill.md 9b).
 Order = PDF, most recent end date first; after `Save and Continue` re-read every block's
 Description textarea in full before moving on.
 

@@ -27,6 +27,10 @@ to read those pages and queue anything that's a plausible fit, same downstream q
    - Drop what the card itself shows as a bar: "no sponsorship", "US citizens only", or a
      stated 3+ years of experience (their M.S. covers a requirement of up to 2). Anything the
      card does not show is left to `jobkit triage`, which applies the same rules to the text.
+   - **Do NOT filter on the employer's sponsorship record here** (a card that itself says "no
+     sponsorship" is dropped above). The record is gate **G7** (`SKILL.md` → "G7 Visa
+     eligibility"), which needs an employer lookup no job card carries. work visa filing history at entry
+     level is what decides it; E-Verify is recorded but never vetoes. Queue the posting and let G7 rule.
    - **Apply the user's standing defense/gov auto-skip** even at this stage — the employer list and
      the flag words live in ONE place, `form-data.md` → Auto-skip employers. For an applicant who is not a US Person, ITAR-restricted work is a legal bar, not a per-posting judgment call. Edit the list to your situation.
 4. For each kept job, pipe a JSON array into `jobkit.py scan-add` (one call per site is fine):

@@ -1,6 +1,6 @@
 # Sweep mode — loaded only by `/apply-job sweep`
 
-Hard rules 1-8 and the whole main flow (gates G1-G6, prep, fill, tracker) are in SKILL.md and
+Hard rules 1-8 and the whole main flow (gates G1-G7, prep, fill, tracker) are in SKILL.md and
 apply unchanged. This file is only the queue handling around them.
 
 ## Sweep flow: `/apply-job sweep [N]`
@@ -21,7 +21,7 @@ matching) runs unattended every 3 hours across 3 resume tracks (Security, Softwa
 Engineer) and drops its pre-scored candidates into `job-matcher-feed\<track>\<date>\<job_id>.json`
 via `bin\jobkit.py sweep-list` / `sweep-done`. This mode is a thin wrapper — <Project B> only
 *finds and scores* candidates; every candidate still goes through the **exact same** tailoring,
-factual-audit, and fill pipeline as a pasted link. Nothing about hard rules 1–7 changes.
+factual-audit, and fill pipeline as a pasted link.
 
 1. `python bin/jobkit.py sweep-prune` first — moves every candidate older than 3 days by the
    feed's own date (`posted_at`, else first-seen, else the feed folder date) into `processed/`
@@ -29,8 +29,8 @@ factual-audit, and fill pipeline as a pasted link. Nothing about hard rules 1–
    `python bin/jobkit.py sweep-list --limit N` — one line per pending candidate, newest first,
    score as tie-break: `<job_id> | <track> | <company> | <title> | score=<0-1> | feed_age=<N>d | <url>`.
    `NONE` means nothing is queued — say so and stop.
-2. Take those `N` (default 5) URLs and feed them into the **main flow above, unchanged** —
-   gates G1–G6, parallel prep, pipelined serial fill, tracker row. **A `STALE` verdict stops and
+2. Take those `N` (default 5) URLs and feed them into the **main flow in SKILL.md, unchanged** —
+   gates G1–G7, parallel prep, one fill subagent per form, tracker row. **A `STALE` verdict stops and
    asks in a sweep exactly as it does for a pasted link** (standing rule): run G1 on
    all N links first, ask about every stale one in a single message with its link and age, and
    meanwhile carry on with the fresh ones. A stale link stays queued until they answer — yes →

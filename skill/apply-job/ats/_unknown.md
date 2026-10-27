@@ -6,7 +6,7 @@ Used when the URL matches no playbook. **Treat every unfamiliar form as auto-sub
 1. One `read_page(filter:"interactive")` → accessibility tree with `ref_` ids and labels.
 2. Map every field to a `form-pack.md` value.
 3. One `browser_batch` of `form_input(ref, value)` calls — fill within a page in a single round trip.
-4. One JS read-back verifying every field. **Never report "filled" from a screenshot.**
+4. `__rbCheck` (`references\readback.min.js`, fill.md 9.0) verifying every field. **Never report "filled" from a screenshot.**
 5. `find` (natural-language lookup) for stubborn widgets before falling back to a real
    `computer` click.
 
@@ -18,6 +18,7 @@ Used when the URL matches no playbook. **Treat every unfamiliar form as auto-sub
 - File inputs need a `read_page` ref for `file_upload`.
 
 ## Promote it
-**The second time a platform appears, create `ats/<name>.md`** with what was learned:
+**The second time a platform appears, log it with `jobkit fail add`** (--where "ats/<name>.md missing")
+with what was learned, so `/apply-job fixes` creates the playbook:
 detection pattern, page sequence, quirks, and the question → answer mappings encountered.
 That is how this directory gets cheaper over time.

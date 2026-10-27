@@ -15,7 +15,9 @@ import re
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TRACKER = os.environ.get("JOBKIT_TRACKER") or os.path.join(ROOT, "tracker.md")
-APPS = os.path.join(ROOT, "applications")
+# JOBKIT_APPS_ROOT redirects every applications/ read and write (tests, dry runs).
+# jobkit.py and jobprep.py import this value; it is read nowhere else.
+APPS = os.environ.get("JOBKIT_APPS_ROOT") or os.path.join(ROOT, "applications")
 
 COLS = ["date", "company", "role", "link", "folder", "keywords", "framing",
         "status", "updated", "posted", "source", "notes"]
@@ -151,18 +153,20 @@ def norm_status(text):
 # --------------------------------------------------------------------- commands
 
 def find_row_index(lines, key):
-    """Return index of the row whose folder or link matches key (substring on
-    folder, normalised match on link)."""
+    """Return index of the row whose folder or link matches key (exact match on
+    the folder basename, normalised match on link). A substring test let
+    "...-acme-swe" hit "...-acme-swe-ii", and a backslash key never matched."""
     from jobkit import norm_url  # lazy to avoid import cycle
     k = (key or "").strip()
     kn = norm_url(k) if k.startswith("http") else None
+    kb = k.replace("\\", "/").strip("/").split("/")[-1] if k and not kn else ""
     for i, l in enumerate(lines):
         if not is_row(l):
             continue
         r = parse_row(l)
         if kn and any(norm_url(u) == kn for u in re.findall(r"https?://\S+", r["link"])):
             return i
-        if not kn and k and k.strip("/").split("/")[-1] in r["folder"]:
+        if kb and r["folder"].replace("\\", "/").strip().strip("`").strip("/").split("/")[-1] == kb:
             return i
     return -1
 

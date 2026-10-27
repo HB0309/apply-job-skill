@@ -55,10 +55,13 @@ existing queue** — a dead token is not a reason to stop processing.
    - off-track titles (not Security / Software / AI Engineer, using the same judgment as
      `content-pool.tex`'s title matching, not a keyword rule)
    - seniority mismatches: Principal / Staff / Director, and Senior / Sr / Lead titles with no
-     entry tier beside them (same rule as `jobkit triage`)
+     entry tier beside them (stricter than `jobkit triage`, which keeps a Senior title with a
+     2-years-or-less bar; the card shows no years, so it drops here)
    - the standing defense/gov auto-skip — the employer list and flag words are in ONE place,
-     `form-data.md` → Auto-skip employers (SKILL.md loads that file anyway)
+     `form-data.md` → Auto-skip employers (`jobkit triage` reads the same list)
    - non-US locations, and internships (they are a new grad seeking full-time)
+   - **never drop on visa/sponsorship at this stage** — that is gate **G7** (`SKILL.md` → "G7 Visa
+     eligibility"), which needs an employer lookup no alert line carries. Queue it and let G7 rule.
 **`enrich`'s "posted N ago" is LinkedIn's REPOST stamp, not the original date** (2026-09-21: it
    said 6 hours for a posting `jobkit posted` dated 33 days old). Use it only to drop the obviously
    old; the date gate is always `jobkit posted` at G1, run on every queued row.
